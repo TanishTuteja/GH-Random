@@ -55,3 +55,9 @@ completion, and the status swap occurs in one transaction.
 Metadata can be refreshed while a staging crawl is running because metadata is
 canonical. Membership—the discovery pool exposed to users—never changes until
 the atomic generation swap.
+
+A failed request marks that crawl and its staging generation FAILED, leaving the
+previous ACTIVE generation untouched. The next sort mode is selected only after
+a successfully completed crawl, so a failed run does not consume a rotation
+slot. The MVP does not retry individual GitHub requests automatically: it
+preserves the failure for inspection and requires a fresh, complete crawl.
