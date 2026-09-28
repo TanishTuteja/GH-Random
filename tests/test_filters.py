@@ -1,4 +1,4 @@
-from app.core.filters import ACTIVITY_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
+from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
 
 
 def test_initial_language_set_contains_ten_unique_options() -> None:
@@ -15,9 +15,9 @@ def test_star_buckets_are_contiguous_and_non_overlapping() -> None:
     assert STAR_BUCKETS[-1].maximum_stars is None
 
 
-def test_activity_buckets_cover_all_non_negative_ages_without_gaps() -> None:
-    assert ACTIVITY_BUCKETS[0].minimum_age_days is None
-    assert ACTIVITY_BUCKETS[-1].maximum_age_days is None
+def test_pushed_buckets_cover_all_non_negative_ages_without_gaps() -> None:
+    assert PUSHED_BUCKETS[0].minimum_age_days is None
+    assert PUSHED_BUCKETS[-1].maximum_age_days is None
 
-    for current, following in zip(ACTIVITY_BUCKETS, ACTIVITY_BUCKETS[1:], strict=False):
+    for current, following in zip(PUSHED_BUCKETS, PUSHED_BUCKETS[1:], strict=False):
         assert current.maximum_age_days == following.minimum_age_days

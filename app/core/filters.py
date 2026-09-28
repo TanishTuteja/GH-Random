@@ -19,8 +19,8 @@ class StarBucket:
 
 
 @dataclass(frozen=True)
-class ActivityBucket:
-    """A range of ages for GitHub's updated_at timestamp, expressed in days.
+class PushedBucket:
+    """An age range for GitHub's pushed_at timestamp, expressed in days.
 
     The lower bound is exclusive and the upper bound is inclusive. A missing
     lower bound means no minimum age; a missing upper bound means no maximum.
@@ -53,9 +53,9 @@ STAR_BUCKETS: tuple[StarBucket, ...] = (
     StarBucket("100001-plus", "100,001+ stars", minimum_stars=100_001, maximum_stars=None),
 )
 
-ACTIVITY_BUCKETS: tuple[ActivityBucket, ...] = (
-    ActivityBucket("updated-within-week", "Updated within 1 week", None, 7),
-    ActivityBucket("updated-1-week-to-1-month", "Updated 1 week–1 month ago", 7, 30),
-    ActivityBucket("updated-1-month-to-1-year", "Updated 1 month–1 year ago", 30, 365),
-    ActivityBucket("updated-over-1-year", "Updated over 1 year ago", 365, None),
+PUSHED_BUCKETS: tuple[PushedBucket, ...] = (
+    PushedBucket("pushed-within-week", "Pushed within 1 week", None, 7),
+    PushedBucket("pushed-1-week-to-1-month", "Pushed 1 week–1 month ago", 7, 30),
+    PushedBucket("pushed-1-month-to-1-year", "Pushed 1 month–1 year ago", 30, 365),
+    PushedBucket("pushed-over-1-year", "Pushed over 1 year ago", 365, None),
 )
