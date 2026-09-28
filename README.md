@@ -7,9 +7,9 @@ request.
 
 ## Current milestone
 
-The project currently contains the application foundation and centralized MVP
-filter definitions. The database schema, crawler, and random-repository API
-will be added in the next incremental steps.
+The project currently contains the application foundation, centralized MVP
+filter definitions, and the initial repository-catalog schema. The crawler and
+random-repository API will be added in later incremental steps.
 
 ## MVP filter configuration
 
@@ -49,5 +49,4 @@ Run the current automated tests with:
 pytest
 ```
 
-Future milestones will add explicit database migration and manual crawl
-commands to this document.
+Future milestones will add manual crawl commands to this document.

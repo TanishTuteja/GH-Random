@@ -49,9 +49,7 @@ STAR_BUCKETS: tuple[StarBucket, ...] = (
     StarBucket("0-100", "0–100 stars", minimum_stars=0, maximum_stars=100),
     StarBucket("101-1k", "101–1,000 stars", minimum_stars=101, maximum_stars=1_000),
     StarBucket("1001-10k", "1,001–10,000 stars", minimum_stars=1_001, maximum_stars=10_000),
-    StarBucket(
-        "10001-100k", "10,001–100,000 stars", minimum_stars=10_001, maximum_stars=100_000
-    ),
+    StarBucket("10001-100k", "10,001–100,000 stars", minimum_stars=10_001, maximum_stars=100_000),
     StarBucket("100001-plus", "100,001+ stars", minimum_stars=100_001, maximum_stars=None),
 )
 
