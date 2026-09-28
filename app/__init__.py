@@ -1,0 +1,1 @@
+"""GH Random application package."""
