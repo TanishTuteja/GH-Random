@@ -69,12 +69,13 @@
 
 ### Crawling, monitoring, and operations
 
-- Install a persistent systemd timer that starts one normal full crawl every 24
-  hours. It should run `python -m app.cli crawl`, not `--resume`, and must prevent
+- Install a persistent systemd timer that starts one normal full crawl every six
+  hours (four runs per day, so each successful sort ordering completes once per
+  day). It should run `python -m app.cli crawl`, not `--resume`, and must prevent
   overlapping operating-system invocations.
 - Preserve the existing behavior that a failed run leaves the active catalog
-  untouched and does not block the following day's normal crawl. An operator may
-  explicitly run `--resume` between scheduled runs when appropriate.
+  untouched and does not block the following six-hourly normal crawl. An operator
+  may explicitly run `--resume` between scheduled runs when appropriate.
 - Configure alerts for crawler and deployment failures. Alert from a systemd
   failure handler and/or OCI Monitoring after a non-zero crawl exit, include the
   relevant journal log and `crawl_runs` identifier, and send to an email or webhook

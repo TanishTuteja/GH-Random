@@ -22,6 +22,12 @@ of the current implementation.
   best-match ranking is also available only by omitting `sort`; it has no
   independently configurable `order` and should be evaluated separately.
 
+## Discovery interface
+
+- Support selecting multiple values within each repository filter. Combine
+  selected values with OR within a filter category and AND across categories,
+  while retaining `Any` as the no-restriction choice for that category.
+
 ## Open-source repository operations
 
 - Add GitHub Actions continuous integration for pull requests and `main`:

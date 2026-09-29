@@ -26,6 +26,15 @@ Every full crawl performs the Cartesian product of 10 languages, 5 star buckets,
 and 4 pushed-time buckets: 200 combinations. This avoids relying on the first
 1,000 results of a broad language/star query to contain older repositories.
 
+## 2026-09-30 — `Any` filters are local catalog queries
+
+The web page and public random-repository endpoint offer `Any` for language,
+stars, and last-pushed time. It means no SQL restriction for that category; it
+does not generate an unbounded GitHub Search request or change the 200 concrete
+crawler combinations. The form uses JavaScript to request a result in place and
+remove its query string from the displayed URL, while retaining a normal GET
+submission as the no-JavaScript fallback.
+
 ## 2026-09-29 — Five-second search pacing
 
 `GITHUB_SEARCH_DELAY_SECONDS` remains the sole pacing setting and defaults to
@@ -146,7 +155,8 @@ single GitHub Search crawl did not return them. The default is configured throug
 `CATALOG_MEMBERSHIP_RETENTION_DAYS`, currently set to three, and is tracked for
 review in `ROADMAP.md`.
 
-Production scheduling will start one normal crawl every 24 hours. A failed run
-does not block that later normal crawl: only a `running` crawl prevents another
-start, and an explicit `--resume` remains an operator choice.
+Production scheduling will start one normal crawl every six hours. Four successful
+runs complete the four-ordering cycle once per day. A failed run does not block the
+following normal crawl: only a `running` crawl prevents another start, and an
+explicit `--resume` remains an operator choice.
 
