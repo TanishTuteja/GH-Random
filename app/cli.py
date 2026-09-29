@@ -42,6 +42,8 @@ def run_crawl() -> CrawlSummary:
         request_delay_seconds=settings.github_search_delay_seconds,
         rate_limit_retry_seconds=settings.github_rate_limit_retry_seconds,
         rate_limit_max_retries=settings.github_rate_limit_max_retries,
+        transport_retry_seconds=settings.github_transport_retry_seconds,
+        transport_max_retries=settings.github_transport_max_retries,
     )
 
     try:

@@ -67,6 +67,10 @@ bounded retry using GitHub's Retry-After header when present, otherwise the
 configured 60-second fallback. This pause supplements, rather than replaces,
 the five-second minimum between ordinary request starts.
 
+A network or timeout failure receives the same bounded, separately configured
+retry treatment. Repository-search GET requests are safe to retry, and every
+retry passes through the five-second request pacer before it starts.
+
 ## 2026-09-29 — GitHub ID is the only canonical repository identity
 
 The numeric GitHub repository ID is immutable, while an owner/name full name can

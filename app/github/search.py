@@ -18,6 +18,8 @@ SUPPORTED_SORTS: frozenset[str] = frozenset({"stars", "forks", "help-wanted-issu
 SUPPORTED_ORDERS: frozenset[str] = frozenset({"asc", "desc"})
 DEFAULT_RATE_LIMIT_RETRY_SECONDS = 60.0
 DEFAULT_RATE_LIMIT_MAX_RETRIES = 2
+DEFAULT_TRANSPORT_RETRY_SECONDS = 60.0
+DEFAULT_TRANSPORT_MAX_RETRIES = 2
 
 
 class InstallationTokenProvider(Protocol):
@@ -28,6 +30,10 @@ class InstallationTokenProvider(Protocol):
 
 class GitHubSearchError(RuntimeError):
     """GitHub repository search could not be completed safely."""
+
+
+class GitHubSearchTransportError(GitHubSearchError):
+    """A transient network or timeout failure occurred during a GitHub search request."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +90,9 @@ class GitHubSearchClient:
         rate_limit_retry_seconds: float = DEFAULT_RATE_LIMIT_RETRY_SECONDS,
         rate_limit_max_retries: int = DEFAULT_RATE_LIMIT_MAX_RETRIES,
         rate_limit_sleeper: Callable[[float], None] = sleep,
+        transport_retry_seconds: float = DEFAULT_TRANSPORT_RETRY_SECONDS,
+        transport_max_retries: int = DEFAULT_TRANSPORT_MAX_RETRIES,
+        transport_retry_sleeper: Callable[[float], None] = sleep,
         api_base_url: str = GITHUB_API_BASE_URL,
     ) -> None:
         if request_delay_seconds <= 0:
@@ -92,6 +101,10 @@ class GitHubSearchClient:
             raise ValueError("The GitHub rate-limit retry delay must be greater than zero.")
         if rate_limit_max_retries < 0:
             raise ValueError("The GitHub rate-limit retry count cannot be negative.")
+        if transport_retry_seconds <= 0:
+            raise ValueError("The GitHub transport retry delay must be greater than zero.")
+        if transport_max_retries < 0:
+            raise ValueError("The GitHub transport retry count cannot be negative.")
 
         self._token_provider = token_provider
         self._http_client = http_client or httpx.Client(timeout=10.0)
@@ -100,6 +113,9 @@ class GitHubSearchClient:
         self._rate_limit_retry_seconds = rate_limit_retry_seconds
         self._rate_limit_max_retries = rate_limit_max_retries
         self._rate_limit_sleeper = rate_limit_sleeper
+        self._transport_retry_seconds = transport_retry_seconds
+        self._transport_max_retries = transport_max_retries
+        self._transport_retry_sleeper = transport_retry_sleeper
         self._api_base_url = api_base_url.rstrip("/")
 
     def close(self) -> None:
@@ -145,8 +161,7 @@ class GitHubSearchClient:
 
         token = self._token_provider.get_installation_access_token()
         for attempt in range(self._rate_limit_max_retries + 1):
-            self._request_pacer.wait_for_next_request()
-            response = self._send_search_request(token, parameters)
+            response = self._send_with_transport_retries(token, parameters)
 
             if self._is_rate_limited(response):
                 if attempt == self._rate_limit_max_retries:
@@ -168,6 +183,22 @@ class GitHubSearchClient:
 
         raise AssertionError("The bounded rate-limit retry loop exited unexpectedly.")
 
+    def _send_with_transport_retries(
+        self,
+        token: str,
+        parameters: Mapping[str, str | int],
+    ) -> httpx.Response:
+        for attempt in range(self._transport_max_retries + 1):
+            self._request_pacer.wait_for_next_request()
+            try:
+                return self._send_search_request(token, parameters)
+            except GitHubSearchTransportError:
+                if attempt == self._transport_max_retries:
+                    raise
+                self._transport_retry_sleeper(self._transport_retry_seconds)
+
+        raise AssertionError("The bounded transport retry loop exited unexpectedly.")
+
     def _send_search_request(
         self,
         token: str,
@@ -183,8 +214,10 @@ class GitHubSearchClient:
                 },
                 params=parameters,
             )
-        except httpx.HTTPError as error:
-            raise GitHubSearchError("The request to GitHub repository search failed.") from error
+        except httpx.TransportError as error:
+            raise GitHubSearchTransportError(
+                "The request to GitHub repository search failed."
+            ) from error
 
     def _rate_limit_delay(self, response: httpx.Response) -> float:
         retry_after = response.headers.get("Retry-After")

@@ -189,3 +189,38 @@ def test_search_stops_after_the_configured_rate_limit_retry_count() -> None:
 
     assert requests == 2
     assert rate_limit_sleeps == [30.0]
+
+
+def test_search_retries_a_transient_transport_failure() -> None:
+    requests = 0
+    transport_sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            raise httpx.ConnectError("Connection dropped", request=request)
+        return httpx.Response(
+            200,
+            json={"total_count": 0, "incomplete_results": False, "items": []},
+        )
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = GitHubSearchClient(
+        FakeTokenProvider(),
+        request_delay_seconds=5.0,
+        http_client=http_client,
+        request_pacer=RequestPacer(5.0, sleeper=lambda _: None),
+        transport_retry_seconds=30.0,
+        transport_max_retries=1,
+        transport_retry_sleeper=transport_sleeps.append,
+    )
+
+    try:
+        result = client.search_repositories("language:Python")
+    finally:
+        http_client.close()
+
+    assert result.repositories == ()
+    assert requests == 2
+    assert transport_sleeps == [30.0]

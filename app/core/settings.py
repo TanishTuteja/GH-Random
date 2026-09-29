@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     github_search_delay_seconds: float = Field(default=5.0, gt=0)
     github_rate_limit_retry_seconds: float = Field(default=60.0, gt=0)
     github_rate_limit_max_retries: int = Field(default=2, ge=0)
+    github_transport_retry_seconds: float = Field(default=60.0, gt=0)
+    github_transport_max_retries: int = Field(default=2, ge=0)
 
 
 class GitHubAppSettings(BaseSettings):
