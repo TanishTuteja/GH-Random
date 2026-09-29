@@ -40,12 +40,19 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 Copy-Item .env.example .env
+docker compose up --detach database
 ~~~
 
-Fill the copied .env file with the GitHub App values you created:
+Fill the copied .env file with a local PostgreSQL password and the GitHub App
+values you created:
 
 ~~~dotenv
-DATABASE_URL=sqlite:///./gh_random.db
+POSTGRES_DB=gh_random
+POSTGRES_USER=gh_random
+POSTGRES_PASSWORD=choose-a-local-development-password
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql+psycopg://gh_random:choose-a-local-development-password@127.0.0.1:5432/gh_random
+TEST_DATABASE_URL=postgresql+psycopg://gh_random:choose-a-local-development-password@127.0.0.1:5432/gh_random_test
 GITHUB_SEARCH_DELAY_SECONDS=5
 GITHUB_RATE_LIMIT_RETRY_SECONDS=60
 GITHUB_RATE_LIMIT_MAX_RETRIES=2
@@ -57,8 +64,9 @@ GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 # GITHUB_APP_INSTALLATION_ID=12345678
 ~~~
 
-Do not put the private key in the repository. The default SQLite URL is suitable
-for local development; set DATABASE_URL to a PostgreSQL URL when deploying.
+The PostgreSQL container binds only to 127.0.0.1 and creates both the application
+database and the isolated test database. Do not put the private key or any real
+deployment password in the repository.
 The two rate-limit settings only apply after GitHub explicitly returns a
 rate-limit response. The transport settings apply only to a network or timeout
 failure. Normal requests remain five seconds apart.

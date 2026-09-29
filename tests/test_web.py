@@ -1,32 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import Settings
-from app.db.base import Base
 from app.db.models import CatalogGeneration, GenerationRepository, Repository
-from app.db.session import create_engine_from_url, create_session_factory
 from app.main import create_app
 
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
-
-
-@pytest.fixture
-def catalog_database(
-    tmp_path: Path,
-) -> Iterator[tuple[Engine, sessionmaker[Session]]]:
-    database_path = tmp_path / "catalog.db"
-    engine = create_engine_from_url(f"sqlite:///{database_path.as_posix()}")
-    Base.metadata.create_all(engine)
-    yield engine, create_session_factory(engine)
-    engine.dispose()
 
 
 def _repository(repository_id: int) -> Repository:
@@ -53,15 +36,15 @@ def _repository(repository_id: int) -> Repository:
 
 
 def test_index_and_public_random_api_use_only_active_catalog(
-    catalog_database: tuple[Engine, sessionmaker[Session]],
+    session_factory: sessionmaker[Session],
 ) -> None:
-    _, session_factory = catalog_database
     with session_factory() as session, session.begin():
         active = CatalogGeneration(status="active", created_at=NOW, activated_at=NOW)
         retired = CatalogGeneration(status="retired", created_at=NOW, activated_at=NOW)
         session.add_all([active, retired])
         session.flush()
         session.add_all([_repository(1), _repository(2)])
+        session.flush()
         session.add_all(
             [
                 GenerationRepository(
@@ -78,7 +61,9 @@ def test_index_and_public_random_api_use_only_active_catalog(
         )
 
     app = create_app(
-        Settings.model_validate({"database_url": "sqlite:///unused.db"}),
+        Settings.model_validate(
+            {"database_url": "postgresql+psycopg://gh_random@127.0.0.1/unused"}
+        ),
         session_factory,
         clock=lambda: NOW,
     )
@@ -123,11 +108,12 @@ def test_index_and_public_random_api_use_only_active_catalog(
 
 
 def test_public_random_api_reports_invalid_or_empty_requests(
-    catalog_database: tuple[Engine, sessionmaker[Session]],
+    session_factory: sessionmaker[Session],
 ) -> None:
-    _, session_factory = catalog_database
     app = create_app(
-        Settings.model_validate({"database_url": "sqlite:///unused.db"}),
+        Settings.model_validate(
+            {"database_url": "postgresql+psycopg://gh_random@127.0.0.1/unused"}
+        ),
         session_factory,
         clock=lambda: NOW,
     )

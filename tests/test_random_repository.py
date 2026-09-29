@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.catalog.random_repository import (
@@ -13,18 +11,9 @@ from app.catalog.random_repository import (
     find_random_active_repository,
     resolve_filter_selection,
 )
-from app.db.base import Base
 from app.db.models import CatalogGeneration, GenerationRepository, Repository
 
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
-
-
-@pytest.fixture
-def session_factory() -> Iterator[sessionmaker[Session]]:
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    yield sessionmaker(engine)
-    engine.dispose()
 
 
 def _repository(
@@ -81,6 +70,7 @@ def test_selects_only_active_repositories_matching_every_filter(
                 _repository(5),
             ]
         )
+        session.flush()
         session.add_all(
             [
                 GenerationRepository(
@@ -135,6 +125,7 @@ def test_pushed_time_boundaries_are_inclusive_at_the_newer_end(
                 _repository(2, pushed_at=NOW - timedelta(days=7, seconds=1)),
             ]
         )
+        session.flush()
         session.add_all(
             [
                 GenerationRepository(

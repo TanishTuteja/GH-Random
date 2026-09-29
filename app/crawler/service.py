@@ -241,6 +241,9 @@ class CrawlService:
                 else:
                     self._update_repository_metadata(existing, incoming)
 
+            session.flush()
+
+            for incoming in incoming_repositories:
                 membership = existing_memberships.get(incoming.github_id)
                 if membership is None:
                     session.add(

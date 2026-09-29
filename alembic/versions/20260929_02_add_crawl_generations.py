@@ -83,7 +83,6 @@ def upgrade() -> None:
         "catalog_generations",
         ["status"],
         unique=True,
-        sqlite_where=sa.text("status = 'active'"),
         postgresql_where=sa.text("status = 'active'"),
     )
     op.create_table(

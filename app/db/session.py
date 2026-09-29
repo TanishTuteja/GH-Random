@@ -6,16 +6,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 
 def create_engine_from_url(database_url: str) -> Engine:
-    """Create an engine with the options required by its database backend."""
+    """Create an engine for the PostgreSQL-only application database."""
 
     url = make_url(database_url)
-    connect_args: dict[str, bool] = {}
+    if url.get_backend_name() != "postgresql":
+        raise ValueError("DATABASE_URL must use the PostgreSQL backend.")
 
-    if url.get_backend_name() == "sqlite":
-        # FastAPI may use a connection from a worker thread different from its creator.
-        connect_args["check_same_thread"] = False
-
-    return create_engine(url, connect_args=connect_args, pool_pre_ping=True)
+    return create_engine(url, pool_pre_ping=True)
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:

@@ -14,11 +14,8 @@ dist/
 .venv/
 venv/
 
-# Local configuration and databases
+# Local configuration
 .env
-*.db
-*.sqlite
-*.sqlite3
 
 # Editors and operating systems
 .vscode/

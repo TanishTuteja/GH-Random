@@ -68,7 +68,6 @@ class CatalogGeneration(Base):
             "uq_catalog_generations_one_active",
             "status",
             unique=True,
-            sqlite_where=text("status = 'active'"),
             postgresql_where=text("status = 'active'"),
         ),
     )

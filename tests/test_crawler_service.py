@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
 from app.crawler.planning import CrawlSearchWorkItem
 from app.crawler.service import CrawlService
-from app.db.base import Base
 from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Repository
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
 
@@ -42,14 +40,6 @@ class FakeRepositorySearcher:
         if isinstance(response, Exception):
             raise response
         return response
-
-
-@pytest.fixture
-def session_factory() -> Iterator[sessionmaker[Session]]:
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    yield sessionmaker(engine)
-    engine.dispose()
 
 
 def _plan(_: datetime) -> tuple[CrawlSearchWorkItem, ...]:

@@ -103,3 +103,16 @@ The random-repository endpoint remains public by design so it can be used by
 the index page or external callers. It exposes local catalog metadata only and
 sends a no-store cache header because each call is intended to produce a fresh
 random selection.
+
+## 2026-09-29 — PostgreSQL from the first development environment
+
+SQLite support was removed before a catalog generation was published. Local
+development uses PostgreSQL 17 in Docker Compose with the psycopg driver, and
+the container exposes its port only on localhost. The same PostgreSQL-oriented
+Alembic migrations and SQLAlchemy behavior now apply in development and
+deployment.
+
+Tests use an isolated PostgreSQL test database initialized by Docker Compose.
+This exposed and fixed an ordering issue that SQLite's disabled foreign-key
+enforcement had hidden: repository rows are flushed before generation
+memberships reference them.

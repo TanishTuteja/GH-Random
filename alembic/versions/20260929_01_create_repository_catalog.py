@@ -38,7 +38,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("fork_count >= 0", name="ck_repositories_fork_count_nonnegative"),
         sa.PrimaryKeyConstraint("github_id"),
-        sa.UniqueConstraint("full_name"),
+        sa.UniqueConstraint("full_name", name="uq_repositories_full_name"),
     )
     op.create_index("ix_repositories_language", "repositories", ["language"], unique=False)
     op.create_index(
