@@ -5,11 +5,12 @@ of the current implementation.
 
 ## Catalog lifecycle
 
-- Revisit the current rolling-catalog policy. A new staging generation copies
-  active memberships, refreshes each repository rediscovered by the crawl, and
-  retires memberships whose `last_seen` time is more than 24 hours old when the
-  crawl publishes. Decide whether 24 hours is appropriate or whether retention
-  should instead be configured in successful-crawl counts, elapsed time, or both.
+- Review the current rolling-catalog policy after real production crawl data is
+  available. A new staging generation copies active memberships, refreshes each
+  repository rediscovered by the crawl, and retires memberships whose `last_seen`
+  time exceeds the configured three-day retention window when the crawl publishes.
+  Revisit whether that duration should instead be based on successful-crawl counts,
+  elapsed time, or both.
 
 ## Crawl coverage
 
