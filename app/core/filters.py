@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+ANY_FILTER_ID = "any"
+
 
 @dataclass(frozen=True)
 class LanguageOption:
@@ -45,6 +47,13 @@ SUPPORTED_LANGUAGES: tuple[LanguageOption, ...] = (
     LanguageOption("ruby", "Ruby", "Ruby"),
 )
 
+# These options are only for local catalog filtering. The crawler must continue
+# to query the concrete buckets above, not broad GitHub Search queries.
+LANGUAGE_FILTER_OPTIONS: tuple[LanguageOption, ...] = (
+    LanguageOption(ANY_FILTER_ID, "Any", ""),
+    *SUPPORTED_LANGUAGES,
+)
+
 STAR_BUCKETS: tuple[StarBucket, ...] = (
     StarBucket("0-100", "0–100 stars", minimum_stars=0, maximum_stars=100),
     StarBucket("101-1k", "101–1,000 stars", minimum_stars=101, maximum_stars=1_000),
@@ -53,9 +62,19 @@ STAR_BUCKETS: tuple[StarBucket, ...] = (
     StarBucket("100001-plus", "100,001+ stars", minimum_stars=100_001, maximum_stars=None),
 )
 
+STAR_FILTER_OPTIONS: tuple[StarBucket, ...] = (
+    StarBucket(ANY_FILTER_ID, "Any", minimum_stars=0, maximum_stars=None),
+    *STAR_BUCKETS,
+)
+
 PUSHED_BUCKETS: tuple[PushedBucket, ...] = (
     PushedBucket("pushed-within-week", "Pushed within 1 week", None, 7),
     PushedBucket("pushed-1-week-to-1-month", "Pushed 1 week–1 month ago", 7, 30),
     PushedBucket("pushed-1-month-to-1-year", "Pushed 1 month–1 year ago", 30, 365),
     PushedBucket("pushed-over-1-year", "Pushed over 1 year ago", 365, None),
+)
+
+PUSHED_FILTER_OPTIONS: tuple[PushedBucket, ...] = (
+    PushedBucket(ANY_FILTER_ID, "Any", None, None),
+    *PUSHED_BUCKETS,
 )

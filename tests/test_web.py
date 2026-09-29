@@ -68,6 +68,7 @@ def test_index_and_public_random_api_use_only_active_catalog(
         clock=lambda: NOW,
     )
     with TestClient(app) as client:
+        initial_page = client.get("/")
         page = client.get(
             "/",
             params={
@@ -85,6 +86,7 @@ def test_index_and_public_random_api_use_only_active_catalog(
                 "pushed_bucket": "pushed-within-week",
             },
         )
+        default_response = client.get("/api/random-repository")
         disabled_routes = {
             path: client.get(path).status_code
             for path in [
@@ -97,6 +99,11 @@ def test_index_and_public_random_api_use_only_active_catalog(
             ]
         }
 
+    assert initial_page.status_code == 200
+    assert initial_page.text.count('value="any"') == 3
+    assert 'id="discovery-form"' in initial_page.text
+    assert "event.preventDefault()" in initial_page.text
+    assert "history.replaceState" in initial_page.text
     assert page.status_code == 200
     assert "octo/repository-1" in page.text
     assert 'name="pushed_bucket"' in page.text
@@ -104,6 +111,8 @@ def test_index_and_public_random_api_use_only_active_catalog(
     assert response.json()["github_id"] == 1
     assert response.json()["topics"] == ["testing"]
     assert response.headers["cache-control"] == "no-store"
+    assert default_response.status_code == 200
+    assert default_response.json()["github_id"] == 1
     assert set(disabled_routes.values()) == {404}
 
 

@@ -26,6 +26,7 @@
       select, button { border: 1px solid #525761; border-radius: .7rem; font: inherit; }
       select { width: 100%; min-height: 2.9rem; padding: .65rem .75rem; color: #f8f5ee; background: #181a20; }
       button { width: 100%; margin-top: 1.6rem; padding: .95rem 1.2rem; color: #15200c; background: #b7f673; cursor: pointer; font-weight: 850; }
+      button:disabled { cursor: progress; opacity: .7; }
       .result { min-height: 9rem; margin-top: 1.5rem; }
       .empty { color: #b7b8b2; text-align: center; }
       .error { border-color: #a75b68; color: #ffb2bc; }
@@ -54,7 +55,7 @@
           <p class="eyebrow">SET THE SIGNAL</p>
           <h2 id="filters-title">What should we surface?</h2>
         </div>
-        <form action="/" method="get">
+        <form id="discovery-form" action="/" method="get">
           <input type="hidden" name="discover" value="true">
           <div class="filters">
             <label>
@@ -87,7 +88,7 @@
       </section>
 
       {% if repository %}
-      <section class="result repository" aria-live="polite">
+      <section id="result-panel" class="result repository" aria-live="polite">
         <p class="eyebrow">RANDOM RESULT</p>
         <h2><a href="{{ repository.html_url }}" target="_blank" rel="noreferrer">{{ repository.full_name }}</a></h2>
         <p class="description">{{ repository.description or "No description was provided." }}</p>
@@ -107,14 +108,107 @@
         <p class="catalog-note">Last seen by this catalog: {{ repository.last_seen_at }}</p>
       </section>
       {% elif error_message %}
-      <section class="result error" aria-live="polite">
+      <section id="result-panel" class="result error" aria-live="polite">
         <p>{{ error_message }}</p>
       </section>
       {% else %}
-      <section class="result empty" aria-live="polite">
+      <section id="result-panel" class="result empty" aria-live="polite">
         <p>Choose a direction and reveal a repository from the active catalog.</p>
       </section>
       {% endif %}
     </main>
+    <script>
+      (() => {
+        const form = document.querySelector("#discovery-form");
+        const resultPanel = document.querySelector("#result-panel");
+        if (!form || !resultPanel || !window.fetch) return;
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        const numberFormatter = new Intl.NumberFormat();
+        const dateFormatter = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+
+        const element = (tagName, text, className) => {
+          const node = document.createElement(tagName);
+          if (text) node.textContent = text;
+          if (className) node.className = className;
+          return node;
+        };
+
+        const formatDate = (value) => value ? dateFormatter.format(new Date(value)) : "Not available";
+
+        const showMessage = (message, kind) => {
+          resultPanel.className = `result ${kind}`;
+          resultPanel.replaceChildren(element("p", message));
+        };
+
+        const showRepository = (repository) => {
+          resultPanel.className = "result repository";
+          const eyebrow = element("p", "RANDOM RESULT", "eyebrow");
+          const heading = element("h2");
+          const link = element("a", repository.full_name);
+          link.href = repository.html_url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          heading.append(link);
+
+          const description = element(
+            "p",
+            repository.description || "No description was provided.",
+            "description",
+          );
+          const metadata = element("dl", undefined, "metadata");
+          const fields = [
+            ["Language", repository.language || "Not specified"],
+            ["Stars", numberFormatter.format(repository.stargazer_count)],
+            ["Forks", numberFormatter.format(repository.fork_count)],
+            ["Open issues", numberFormatter.format(repository.open_issues_count)],
+            ["Last pushed", formatDate(repository.github_pushed_at)],
+            ["Updated", formatDate(repository.github_updated_at)],
+          ];
+          for (const [label, value] of fields) {
+            metadata.append(element("dt", label), element("dd", value));
+          }
+
+          const children = [eyebrow, heading, description, metadata];
+          if (repository.topics.length) {
+            const topics = element("ul", undefined, "topics");
+            for (const topic of repository.topics) topics.append(element("li", topic));
+            children.push(topics);
+          }
+          children.push(
+            element("p", `Last seen by this catalog: ${formatDate(repository.last_seen_at)}`, "catalog-note"),
+          );
+          resultPanel.replaceChildren(...children);
+        };
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const parameters = new URLSearchParams(new FormData(form));
+          parameters.delete("discover");
+          resultPanel.setAttribute("aria-busy", "true");
+          if (submitButton) submitButton.disabled = true;
+          showMessage("Finding a repository…", "empty");
+
+          try {
+            const response = await fetch(`/api/random-repository?${parameters.toString()}`, {
+              headers: { Accept: "application/json" },
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.detail || "Unable to find a repository.");
+            showRepository(payload);
+            history.replaceState(null, "", window.location.pathname + window.location.hash);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to find a repository.";
+            showMessage(message, "error");
+          } finally {
+            resultPanel.removeAttribute("aria-busy");
+            if (submitButton) submitButton.disabled = false;
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

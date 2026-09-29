@@ -159,6 +159,42 @@ def test_pushed_time_boundaries_are_inclusive_at_the_newer_end(
     assert one_week_to_month.github_id == 2
 
 
+def test_any_filters_do_not_limit_the_local_catalog_query(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session, session.begin():
+        active = CatalogGeneration(status="active", created_at=NOW, activated_at=NOW)
+        session.add(active)
+        session.flush()
+        session.add(
+            _repository(
+                1,
+                language="Kotlin",
+                stars=100_001,
+                pushed_at=NOW - timedelta(days=366),
+            )
+        )
+        session.flush()
+        session.add(
+            GenerationRepository(
+                generation_id=active.id,
+                github_id=1,
+                last_seen_at=NOW,
+            )
+        )
+
+    selection = resolve_filter_selection(
+        language_id="any",
+        star_bucket_id="any",
+        pushed_bucket_id="any",
+    )
+    with session_factory() as session:
+        repository = find_random_active_repository(session, selection, now=NOW)
+
+    assert repository is not None
+    assert repository.github_id == 1
+
+
 def test_rejects_unknown_filter_identifiers() -> None:
     with pytest.raises(FilterSelectionError, match="Unsupported language"):
         resolve_filter_selection(

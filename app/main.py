@@ -18,7 +18,11 @@ from app.catalog.random_repository import (
     find_random_active_repository,
     resolve_filter_selection,
 )
-from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
+from app.core.filters import (
+    LANGUAGE_FILTER_OPTIONS,
+    PUSHED_FILTER_OPTIONS,
+    STAR_FILTER_OPTIONS,
+)
 from app.core.settings import Settings, get_settings
 from app.db.models import Repository
 from app.db.session import create_engine_from_url, create_session_factory
@@ -82,9 +86,9 @@ def create_app(
     def index(
         request: Request,
         discover: bool = Query(default=False),
-        language: str = Query(default=SUPPORTED_LANGUAGES[0].id),
-        star_bucket: str = Query(default=STAR_BUCKETS[0].id),
-        pushed_bucket: str = Query(default=PUSHED_BUCKETS[0].id),
+        language: str = Query(default=LANGUAGE_FILTER_OPTIONS[0].id),
+        star_bucket: str = Query(default=STAR_FILTER_OPTIONS[0].id),
+        pushed_bucket: str = Query(default=PUSHED_FILTER_OPTIONS[0].id),
     ) -> object:
         repository = None
         error_message = None
@@ -114,9 +118,9 @@ def create_app(
             request=request,
             name="index.html",
             context={
-                "languages": SUPPORTED_LANGUAGES,
-                "star_buckets": STAR_BUCKETS,
-                "pushed_buckets": PUSHED_BUCKETS,
+                "languages": LANGUAGE_FILTER_OPTIONS,
+                "star_buckets": STAR_FILTER_OPTIONS,
+                "pushed_buckets": PUSHED_FILTER_OPTIONS,
                 "selected_language": language,
                 "selected_star_bucket": star_bucket,
                 "selected_pushed_bucket": pushed_bucket,
@@ -132,9 +136,9 @@ def create_app(
     )
     def random_repository(
         response: Response,
-        language: str = Query(default=SUPPORTED_LANGUAGES[0].id),
-        star_bucket: str = Query(default=STAR_BUCKETS[0].id),
-        pushed_bucket: str = Query(default=PUSHED_BUCKETS[0].id),
+        language: str = Query(default=LANGUAGE_FILTER_OPTIONS[0].id),
+        star_bucket: str = Query(default=STAR_FILTER_OPTIONS[0].id),
+        pushed_bucket: str = Query(default=PUSHED_FILTER_OPTIONS[0].id),
     ) -> RandomRepositoryResponse:
         try:
             selection = resolve_filter_selection(

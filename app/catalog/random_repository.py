@@ -10,9 +10,10 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.core.filters import (
-    PUSHED_BUCKETS,
-    STAR_BUCKETS,
-    SUPPORTED_LANGUAGES,
+    ANY_FILTER_ID,
+    LANGUAGE_FILTER_OPTIONS,
+    PUSHED_FILTER_OPTIONS,
+    STAR_FILTER_OPTIONS,
     LanguageOption,
     PushedBucket,
     StarBucket,
@@ -68,12 +69,21 @@ def find_random_active_repository(
         )
         .where(
             CatalogGeneration.status == "active",
-            Repository.language == selection.language.github_qualifier,
-            Repository.stargazer_count >= selection.star_bucket.minimum_stars,
         )
     )
 
-    if selection.star_bucket.maximum_stars is not None:
+    if selection.language.id != ANY_FILTER_ID:
+        statement = statement.where(Repository.language == selection.language.github_qualifier)
+
+    if selection.star_bucket.id != ANY_FILTER_ID:
+        statement = statement.where(
+            Repository.stargazer_count >= selection.star_bucket.minimum_stars
+        )
+
+    if (
+        selection.star_bucket.id != ANY_FILTER_ID
+        and selection.star_bucket.maximum_stars is not None
+    ):
         statement = statement.where(
             Repository.stargazer_count <= selection.star_bucket.maximum_stars
         )
@@ -87,15 +97,18 @@ def find_random_active_repository(
 
 
 def _find_language(option_id: str) -> LanguageOption:
-    return cast(LanguageOption, _find_option(SUPPORTED_LANGUAGES, option_id, "language"))
+    return cast(LanguageOption, _find_option(LANGUAGE_FILTER_OPTIONS, option_id, "language"))
 
 
 def _find_star_bucket(option_id: str) -> StarBucket:
-    return cast(StarBucket, _find_option(STAR_BUCKETS, option_id, "star bucket"))
+    return cast(StarBucket, _find_option(STAR_FILTER_OPTIONS, option_id, "star bucket"))
 
 
 def _find_pushed_bucket(option_id: str) -> PushedBucket:
-    return cast(PushedBucket, _find_option(PUSHED_BUCKETS, option_id, "pushed-time bucket"))
+    return cast(
+        PushedBucket,
+        _find_option(PUSHED_FILTER_OPTIONS, option_id, "pushed-time bucket"),
+    )
 
 
 def _find_option(
