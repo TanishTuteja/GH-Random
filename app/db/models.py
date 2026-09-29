@@ -36,7 +36,7 @@ class Repository(Base):
     )
 
     github_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    full_name: Mapped[str] = mapped_column(String(255), unique=True)
+    full_name: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(255))
     owner_login: Mapped[str] = mapped_column(String(255))
     html_url: Mapped[str] = mapped_column(String(2_048))

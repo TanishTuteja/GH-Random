@@ -56,11 +56,16 @@ def _plan(_: datetime) -> tuple[CrawlSearchWorkItem, ...]:
     return (WORK_ITEM,)
 
 
-def _payload(repository_id: int) -> dict[str, object]:
+def _payload(
+    repository_id: int,
+    *,
+    full_name: str | None = None,
+) -> dict[str, object]:
+    repository_name = f"repository-{repository_id}"
     return {
         "id": repository_id,
-        "full_name": f"octo/repository-{repository_id}",
-        "name": f"repository-{repository_id}",
+        "full_name": full_name or f"octo/{repository_name}",
+        "name": repository_name,
         "owner": {"login": "octo"},
         "html_url": f"https://github.com/octo/repository-{repository_id}",
         "description": "A repository used in a crawler test.",
@@ -241,3 +246,34 @@ def test_crawl_fetches_every_useful_page_for_a_combination(
         repositories = list(session.scalars(select(Repository).order_by(Repository.github_id)))
 
     assert [repository.github_id for repository in repositories] == [1, 2, 3]
+
+
+def test_crawl_accepts_a_reused_mutable_repository_full_name(
+    session_factory: sessionmaker[Session],
+) -> None:
+    reused_full_name = "octo/transferred-repository"
+    _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(1, full_name=reused_full_name))]),
+        STARTED_AT,
+    ).run_full_crawl()
+
+    summary = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(2, full_name=reused_full_name))]),
+        STARTED_AT + timedelta(hours=1),
+    ).run_full_crawl()
+
+    with session_factory() as session:
+        repositories = list(session.scalars(select(Repository).order_by(Repository.github_id)))
+        memberships = list(
+            session.scalars(
+                select(GenerationRepository).where(
+                    GenerationRepository.generation_id == summary.generation_id
+                )
+            )
+        )
+
+    assert [repository.github_id for repository in repositories] == [1, 2]
+    assert {repository.full_name for repository in repositories} == {reused_full_name}
+    assert {membership.github_id for membership in memberships} == {1, 2}

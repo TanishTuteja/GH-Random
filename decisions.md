@@ -67,6 +67,15 @@ bounded retry using GitHub's Retry-After header when present, otherwise the
 configured 60-second fallback. This pause supplements, rather than replaces,
 the five-second minimum between ordinary request starts.
 
+## 2026-09-29 — GitHub ID is the only canonical repository identity
+
+The numeric GitHub repository ID is immutable, while an owner/name full name can
+be reused after a transfer, rename, or replacement repository. The initial
+schema incorrectly made full name unique; migration 20260929_03 removes that
+constraint. A generation can briefly retain an old membership for the
+24-hour stale-retention window even when a distinct repository has since taken
+the same full name.
+
 ## 2026-09-29 — Local-only discovery requests
 
 The web interface calls a FastAPI endpoint that selects a row using the
