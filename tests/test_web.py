@@ -104,6 +104,10 @@ def test_index_and_public_random_api_use_only_active_catalog(
     assert 'id="discovery-form"' in initial_page.text
     assert "event.preventDefault()" in initial_page.text
     assert "history.replaceState" in initial_page.text
+    assert "preserveViewport" in initial_page.text
+    assert "window.scrollTo(scrollX, scrollY)" in initial_page.text
+    assert 'classList.add("is-loading")' in initial_page.text
+    assert 'content: "Finding a repository…"' in initial_page.text
     assert page.status_code == 200
     assert "octo/repository-1" in page.text
     assert 'name="pushed_bucket"' in page.text

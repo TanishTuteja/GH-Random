@@ -27,7 +27,8 @@
       select { width: 100%; min-height: 2.9rem; padding: .65rem .75rem; color: #f8f5ee; background: #181a20; }
       button { width: 100%; margin-top: 1.6rem; padding: .95rem 1.2rem; color: #15200c; background: #b7f673; cursor: pointer; font-weight: 850; }
       button:disabled { cursor: progress; opacity: .7; }
-      .result { min-height: 9rem; margin-top: 1.5rem; }
+      .result { position: relative; min-height: 9rem; margin-top: 1.5rem; overflow-anchor: none; }
+      .result.is-loading::after { content: "Finding a repository…"; position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: rgb(24 26 32 / .88); color: #f8f5ee; font-weight: 750; }
       .empty { color: #b7b8b2; text-align: center; }
       .error { border-color: #a75b68; color: #ffb2bc; }
       .repository h2 a { color: #f8f5ee; text-decoration-color: #b7f673; text-underline-offset: .18em; }
@@ -139,6 +140,17 @@
 
         const formatDate = (value) => value ? dateFormatter.format(new Date(value)) : "Not available";
 
+        const preserveViewport = (update) => {
+          const scrollX = window.scrollX;
+          const scrollY = window.scrollY;
+          update();
+
+          const restore = () => window.scrollTo(scrollX, scrollY);
+          restore();
+          requestAnimationFrame(restore);
+          requestAnimationFrame(() => requestAnimationFrame(restore));
+        };
+
         const showMessage = (message, kind) => {
           resultPanel.className = `result ${kind}`;
           resultPanel.replaceChildren(element("p", message));
@@ -189,8 +201,8 @@
           const parameters = new URLSearchParams(new FormData(form));
           parameters.delete("discover");
           resultPanel.setAttribute("aria-busy", "true");
+          resultPanel.classList.add("is-loading");
           if (submitButton) submitButton.disabled = true;
-          showMessage("Finding a repository…", "empty");
 
           try {
             const response = await fetch(`/api/random-repository?${parameters.toString()}`, {
@@ -198,13 +210,14 @@
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.detail || "Unable to find a repository.");
-            showRepository(payload);
+            preserveViewport(() => showRepository(payload));
             history.replaceState(null, "", window.location.pathname + window.location.hash);
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to find a repository.";
-            showMessage(message, "error");
+            preserveViewport(() => showMessage(message, "error"));
           } finally {
             resultPanel.removeAttribute("aria-busy");
+            resultPanel.classList.remove("is-loading");
             if (submitButton) submitButton.disabled = false;
           }
         });
