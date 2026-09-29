@@ -120,3 +120,17 @@ Tests use an isolated PostgreSQL test database initialized by Docker Compose.
 This exposed and fixed an ordering issue that SQLite's disabled foreign-key
 enforcement had hidden: repository rows are flushed before generation
 memberships reference them.
+
+## 2026-09-29 — Explicit, checkpointed crawl resume
+
+After each successfully ingested GitHub Search page, the crawler atomically
+stores the next work-item index, next page, page count, and an exact fingerprint
+of the original search plan. `python -m app.cli crawl --resume` continues the
+latest failed crawl only when its plan still matches; it retains the original
+date boundaries and sort order, and does not publish the staging generation
+until it is complete.
+
+Resume is operator-triggered rather than automatic. This preserves a visible
+failed state for inspection, while preventing a network interruption from
+discarding hours of successful requests. Crawls that failed before this feature
+was deployed lack a durable cursor and cannot be resumed exactly.

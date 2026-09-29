@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from typing import Protocol, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,6 +20,7 @@ from app.crawler.planning import (
     SearchOrdering,
     build_crawl_search_plan,
     calculate_search_page_count,
+    fingerprint_crawl_search_plan,
 )
 from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Repository
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
@@ -56,6 +57,20 @@ class CrawlSummary:
     repositories_seen: int
 
 
+@dataclass(frozen=True)
+class CrawlContinuation:
+    """Persisted position required to continue one exact crawl plan."""
+
+    run_id: int
+    generation_id: int
+    ordering: SearchOrdering
+    plan_reference_at: datetime
+    plan_fingerprint: str
+    next_work_item_index: int
+    next_page: int
+    current_work_item_page_count: int | None
+
+
 class CrawlService:
     """Build and atomically publish complete repository catalog generations."""
 
@@ -78,48 +93,106 @@ class CrawlService:
         """Run all configured queries and publish only if every request succeeds."""
 
         started_at = self._current_time()
-        ordering, run_id, generation_id = self._begin_crawl(started_at)
-        seen_repository_ids: set[int] = set()
+        work_items = self._plan_builder(started_at)
+        continuation = self._begin_crawl(started_at, work_items)
+        return self._continue_crawl(continuation, work_items, seen_repository_ids=set())
+
+    def resume_full_crawl(self) -> CrawlSummary:
+        """Continue the latest failed crawl from its persisted next-page cursor."""
+
+        continuation = self._load_resumable_crawl()
+        work_items = self._plan_builder(continuation.plan_reference_at)
+        if fingerprint_crawl_search_plan(work_items) != continuation.plan_fingerprint:
+            raise RuntimeError(
+                "The configured crawl plan differs from the failed crawl and cannot be resumed."
+            )
+
+        self._mark_crawl_running(continuation)
+        seen_repository_ids = self._seen_repository_ids(
+            continuation.generation_id,
+            since=continuation.plan_reference_at,
+        )
+        return self._continue_crawl(continuation, work_items, seen_repository_ids)
+
+    def _continue_crawl(
+        self,
+        continuation: CrawlContinuation,
+        work_items: tuple[CrawlSearchWorkItem, ...],
+        seen_repository_ids: set[int],
+    ) -> CrawlSummary:
+        """Fetch pages from a persisted cursor and publish only after completion."""
+
+        if continuation.next_work_item_index > len(work_items):
+            raise RuntimeError("The crawl checkpoint is beyond the configured plan.")
 
         try:
-            work_items = self._plan_builder(started_at)
-            for position, work_item in enumerate(work_items, start=1):
-                first_page = self._search(work_item, ordering, page=1)
-                self._ingest_page(
-                    run_id,
-                    generation_id,
-                    first_page,
-                    seen_repository_ids,
-                    seen_at=self._current_time(),
-                )
+            for work_item_index in range(continuation.next_work_item_index, len(work_items)):
+                work_item = work_items[work_item_index]
+                if work_item_index == continuation.next_work_item_index:
+                    page_number = continuation.next_page
+                    page_count = continuation.current_work_item_page_count
+                else:
+                    page_number = 1
+                    page_count = None
 
-                page_count = calculate_search_page_count(first_page.total_count)
-                for page_number in range(2, page_count + 1):
-                    page = self._search(work_item, ordering, page=page_number)
+                if page_number == 1:
+                    first_page = self._search(work_item, continuation.ordering, page=1)
+                    page_count = calculate_search_page_count(first_page.total_count)
                     self._ingest_page(
-                        run_id,
-                        generation_id,
+                        continuation.run_id,
+                        continuation.generation_id,
+                        first_page,
+                        seen_repository_ids,
+                        next_work_item_index=(
+                            work_item_index + 1 if page_count <= 1 else work_item_index
+                        ),
+                        next_page=1 if page_count <= 1 else 2,
+                        current_work_item_page_count=None if page_count <= 1 else page_count,
+                        seen_at=self._current_time(),
+                    )
+                    page_number = 2
+
+                if page_count is None:
+                    raise RuntimeError("The crawl checkpoint is missing the current page count.")
+
+                for page_number in range(page_number, page_count + 1):
+                    page = self._search(work_item, continuation.ordering, page=page_number)
+                    self._ingest_page(
+                        continuation.run_id,
+                        continuation.generation_id,
                         page,
                         seen_repository_ids,
+                        next_work_item_index=(
+                            work_item_index + 1 if page_number == page_count else work_item_index
+                        ),
+                        next_page=1 if page_number == page_count else page_number + 1,
+                        current_work_item_page_count=(
+                            None if page_number == page_count else page_count
+                        ),
                         seen_at=self._current_time(),
                     )
 
                 self._logger.info(
                     "Crawl progress: %s / %s combinations; %s unique repositories in staging",
-                    position,
+                    work_item_index + 1,
                     len(work_items),
                     len(seen_repository_ids),
                 )
 
             return self._publish_crawl(
-                run_id,
-                generation_id,
-                ordering,
+                continuation.run_id,
+                continuation.generation_id,
+                continuation.ordering,
                 seen_repository_ids,
                 completed_at=self._current_time(),
             )
         except Exception as error:
-            self._fail_crawl(run_id, generation_id, error, failed_at=self._current_time())
+            self._fail_crawl(
+                continuation.run_id,
+                continuation.generation_id,
+                error,
+                failed_at=self._current_time(),
+            )
             raise
 
     def _default_plan(self, reference_time: datetime) -> tuple[CrawlSearchWorkItem, ...]:
@@ -130,7 +203,11 @@ class CrawlService:
             reference_time=reference_time,
         )
 
-    def _begin_crawl(self, started_at: datetime) -> tuple[SearchOrdering, int, int]:
+    def _begin_crawl(
+        self,
+        started_at: datetime,
+        work_items: tuple[CrawlSearchWorkItem, ...],
+    ) -> CrawlContinuation:
         with self._session_factory() as session, session.begin():
             running_crawl = session.scalar(
                 select(CrawlRun).where(CrawlRun.status == "running").limit(1)
@@ -139,6 +216,7 @@ class CrawlService:
                 raise RuntimeError("A crawl is already running.")
 
             ordering = self._next_ordering(session)
+            plan_fingerprint = fingerprint_crawl_search_plan(work_items)
             generation = CatalogGeneration(
                 status="staging",
                 created_at=started_at,
@@ -175,10 +253,83 @@ class CrawlService:
                 requests_made=0,
                 repositories_seen=0,
                 error_message=None,
+                plan_reference_at=started_at,
+                plan_fingerprint=plan_fingerprint,
+                next_work_item_index=0,
+                next_page=1,
+                current_work_item_page_count=None,
+                resume_count=0,
             )
             session.add(crawl_run)
             session.flush()
-            return ordering, crawl_run.id, generation.id
+            return CrawlContinuation(
+                run_id=crawl_run.id,
+                generation_id=generation.id,
+                ordering=ordering,
+                plan_reference_at=started_at,
+                plan_fingerprint=plan_fingerprint,
+                next_work_item_index=crawl_run.next_work_item_index,
+                next_page=crawl_run.next_page,
+                current_work_item_page_count=crawl_run.current_work_item_page_count,
+            )
+
+    def _load_resumable_crawl(self) -> CrawlContinuation:
+        with self._session_factory() as session:
+            running_crawl = session.scalar(
+                select(CrawlRun).where(CrawlRun.status == "running").limit(1)
+            )
+            if running_crawl is not None:
+                raise RuntimeError("A crawl is already running.")
+
+            crawl_run = session.scalar(
+                select(CrawlRun)
+                .where(CrawlRun.status == "failed")
+                .order_by(CrawlRun.id.desc())
+                .limit(1)
+            )
+            if crawl_run is None:
+                raise RuntimeError("There is no failed crawl available to resume.")
+            if crawl_run.plan_reference_at is None or crawl_run.plan_fingerprint is None:
+                raise RuntimeError(
+                    "This crawl failed before durable checkpoints were introduced and cannot "
+                    "be resumed exactly. Start a new crawl."
+                )
+
+            generation = session.get(CatalogGeneration, crawl_run.generation_id)
+            if generation is None or generation.status != "failed":
+                raise RuntimeError("The failed crawl does not have a resumable staging generation.")
+
+            return CrawlContinuation(
+                run_id=crawl_run.id,
+                generation_id=crawl_run.generation_id,
+                ordering=self._ordering_from_run(crawl_run),
+                plan_reference_at=crawl_run.plan_reference_at,
+                plan_fingerprint=crawl_run.plan_fingerprint,
+                next_work_item_index=crawl_run.next_work_item_index,
+                next_page=crawl_run.next_page,
+                current_work_item_page_count=crawl_run.current_work_item_page_count,
+            )
+
+    def _mark_crawl_running(self, continuation: CrawlContinuation) -> None:
+        with self._session_factory() as session, session.begin():
+            running_crawl = session.scalar(
+                select(CrawlRun).where(CrawlRun.status == "running").limit(1)
+            )
+            if running_crawl is not None:
+                raise RuntimeError("A crawl is already running.")
+
+            crawl_run = session.get(CrawlRun, continuation.run_id)
+            generation = session.get(CatalogGeneration, continuation.generation_id)
+            if crawl_run is None or generation is None:
+                raise RuntimeError("The failed crawl no longer exists.")
+            if crawl_run.status != "failed" or generation.status != "failed":
+                raise RuntimeError("The failed crawl is no longer resumable.")
+
+            crawl_run.status = "running"
+            crawl_run.completed_at = None
+            crawl_run.error_message = None
+            crawl_run.resume_count += 1
+            generation.status = "staging"
 
     def _next_ordering(self, session: Session) -> SearchOrdering:
         previous_run = session.scalar(
@@ -195,6 +346,14 @@ class CrawlService:
                 return CRAWL_SORT_CYCLE[(index + 1) % len(CRAWL_SORT_CYCLE)]
 
         return CRAWL_SORT_CYCLE[0]
+
+    @staticmethod
+    def _ordering_from_run(crawl_run: CrawlRun) -> SearchOrdering:
+        return SearchOrdering(
+            id=f"{crawl_run.sort_key}-{crawl_run.sort_order}",
+            sort=cast(RepositorySearchSort, crawl_run.sort_key),
+            order=cast(SearchOrder, crawl_run.sort_order),
+        )
 
     def _search(
         self,
@@ -218,6 +377,9 @@ class CrawlService:
         search_page: RepositorySearchPage,
         seen_repository_ids: set[int],
         *,
+        next_work_item_index: int,
+        next_page: int,
+        current_work_item_page_count: int | None,
         seen_at: datetime,
     ) -> None:
         incoming_repositories = [
@@ -260,6 +422,9 @@ class CrawlService:
 
             crawl_run.requests_made += 1
             crawl_run.repositories_seen = len(seen_repository_ids)
+            crawl_run.next_work_item_index = next_work_item_index
+            crawl_run.next_page = next_page
+            crawl_run.current_work_item_page_count = current_work_item_page_count
 
     def _publish_crawl(
         self,
@@ -361,6 +526,17 @@ class CrawlService:
                 )
             )
         }
+
+    def _seen_repository_ids(self, generation_id: int, *, since: datetime) -> set[int]:
+        with self._session_factory() as session:
+            return set(
+                session.scalars(
+                    select(GenerationRepository.github_id).where(
+                        GenerationRepository.generation_id == generation_id,
+                        GenerationRepository.last_seen_at >= since,
+                    )
+                )
+            )
 
     @staticmethod
     def _update_repository_metadata(existing: Repository, incoming: Repository) -> None:

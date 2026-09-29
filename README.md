@@ -85,6 +85,17 @@ Start a complete catalog crawl:
 python -m app.cli crawl
 ~~~
 
+If a post-checkpoint crawl fails after its bounded request retries, continue the
+same staging generation without repeating completed search pages:
+
+~~~powershell
+python -m app.cli crawl --resume
+~~~
+
+Resume verifies that the filter plan has not changed and always uses the
+original crawl's date boundaries and GitHub sort order. It remains explicit so
+an operator can inspect a failure before continuing it.
+
 See the local catalog and crawl progress without exposing an operational HTTP
 endpoint:
 

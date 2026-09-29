@@ -47,6 +47,30 @@ def test_crawl_command_returns_failure_when_a_crawl_errors(
     assert "previous active catalog remains available" in caplog.text
 
 
+def test_crawl_resume_flag_dispatches_to_the_resumable_crawl(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    received_resume_flags: list[bool] = []
+
+    def resuming_crawl(*, resume: bool) -> CrawlSummary:
+        received_resume_flags.append(resume)
+        return CrawlSummary(
+            run_id=1,
+            generation_id=2,
+            ordering=CRAWL_SORT_CYCLE[0],
+            requests_made=200,
+            repositories_seen=123,
+        )
+
+    monkeypatch.setattr("app.cli.run_crawl", resuming_crawl)
+
+    assert main(["crawl", "--resume"]) == 0
+
+    assert received_resume_flags == [True]
+    assert "Crawl complete:" in capsys.readouterr().out
+
+
 def test_status_command_reports_local_catalog_and_crawl_progress(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -62,6 +86,7 @@ def test_status_command_reports_local_catalog_and_crawl_progress(
             latest_run_completed_at=None,
             latest_run_requests_made=17,
             latest_run_repositories_seen=1_234,
+            latest_run_resume_count=2,
         ),
     )
 
@@ -70,7 +95,7 @@ def test_status_command_reports_local_catalog_and_crawl_progress(
     assert (
         capsys.readouterr().out
         == "Catalog status: active_generation=4, active_at=none, latest_run=5, "
-        "run_status=running, started_at=none, completed_at=none, requests=17, "
+        "run_status=running, started_at=none, completed_at=none, resumes=2, requests=17, "
         "repositories=1234\n"
     )
 

@@ -238,6 +238,124 @@ def test_crawl_fetches_every_useful_page_for_a_combination(
     assert [repository.github_id for repository in repositories] == [1, 2, 3]
 
 
+def test_failed_crawl_resumes_from_the_next_persisted_page(
+    session_factory: sessionmaker[Session],
+) -> None:
+    failing_searcher = FakeRepositorySearcher(
+        [
+            _page(_payload(1), total_count=201),
+            RuntimeError("GitHub is unavailable"),
+        ]
+    )
+    service = _service(session_factory, failing_searcher, STARTED_AT)
+
+    with pytest.raises(RuntimeError, match="GitHub is unavailable"):
+        service.run_full_crawl()
+
+    with session_factory() as session:
+        failed_run = session.scalar(select(CrawlRun).where(CrawlRun.status == "failed"))
+
+    assert failed_run is not None
+    assert failed_run.requests_made == 1
+    assert failed_run.next_work_item_index == 0
+    assert failed_run.next_page == 2
+    assert failed_run.current_work_item_page_count == 3
+    assert failed_run.plan_fingerprint is not None
+
+    resuming_searcher = FakeRepositorySearcher(
+        [
+            _page(_payload(2), total_count=201),
+            _page(_payload(3), total_count=201),
+        ]
+    )
+    summary = _service(session_factory, resuming_searcher, STARTED_AT).resume_full_crawl()
+
+    assert [call[1] for call in resuming_searcher.calls] == [2, 3]
+    assert summary.requests_made == 3
+    assert summary.repositories_seen == 3
+
+    with session_factory() as session:
+        completed_run = session.get(CrawlRun, summary.run_id)
+        active_generation = session.scalar(
+            select(CatalogGeneration).where(CatalogGeneration.status == "active")
+        )
+
+    assert completed_run is not None
+    assert completed_run.resume_count == 1
+    assert completed_run.status == "completed"
+    assert active_generation is not None
+    assert active_generation.id == summary.generation_id
+
+
+def test_resume_rejects_a_changed_crawl_plan(
+    session_factory: sessionmaker[Session],
+) -> None:
+    service = _service(
+        session_factory,
+        FakeRepositorySearcher([RuntimeError("GitHub is unavailable")]),
+        STARTED_AT,
+    )
+
+    with pytest.raises(RuntimeError, match="GitHub is unavailable"):
+        service.run_full_crawl()
+
+    changed_work_item = CrawlSearchWorkItem(
+        language=SUPPORTED_LANGUAGES[1],
+        star_bucket=STAR_BUCKETS[0],
+        pushed_bucket=PUSHED_BUCKETS[0],
+        query="language:JavaScript stars:0..100 pushed:>=2026-09-22 archived:false fork:false",
+    )
+    changed_service = CrawlService(
+        session_factory,
+        FakeRepositorySearcher([]),
+        clock=lambda: STARTED_AT,
+        plan_builder=lambda _: (changed_work_item,),
+    )
+
+    with pytest.raises(RuntimeError, match="configured crawl plan differs"):
+        changed_service.resume_full_crawl()
+
+    with session_factory() as session:
+        failed_run = session.scalar(select(CrawlRun).where(CrawlRun.status == "failed"))
+        failed_generation = session.scalar(
+            select(CatalogGeneration).where(CatalogGeneration.status == "failed")
+        )
+
+    assert failed_run is not None
+    assert failed_generation is not None
+
+
+def test_resume_rejects_a_pre_checkpoint_failed_crawl(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session, session.begin():
+        generation = CatalogGeneration(status="failed", created_at=STARTED_AT, activated_at=None)
+        session.add(generation)
+        session.flush()
+        session.add(
+            CrawlRun(
+                generation_id=generation.id,
+                status="failed",
+                sort_key="updated",
+                sort_order="desc",
+                started_at=STARTED_AT,
+                completed_at=STARTED_AT,
+                requests_made=83,
+                repositories_seen=4_634,
+                error_message="GitHub is unavailable",
+                plan_reference_at=STARTED_AT,
+                plan_fingerprint=None,
+                next_work_item_index=0,
+                next_page=1,
+                current_work_item_page_count=None,
+                resume_count=0,
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="before durable checkpoints"):
+        _service(session_factory, FakeRepositorySearcher([]), STARTED_AT).resume_full_crawl()
+
+
 def test_crawl_accepts_a_reused_mutable_repository_full_name(
     session_factory: sessionmaker[Session],
 ) -> None:

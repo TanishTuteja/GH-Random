@@ -102,6 +102,12 @@ class CrawlRun(Base):
     requests_made: Mapped[int] = mapped_column(Integer, default=0)
     repositories_seen: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
+    plan_reference_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    plan_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    next_work_item_index: Mapped[int] = mapped_column(Integer, default=0)
+    next_page: Mapped[int] = mapped_column(Integer, default=1)
+    current_work_item_page_count: Mapped[int | None] = mapped_column(Integer)
+    resume_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class GenerationRepository(Base):

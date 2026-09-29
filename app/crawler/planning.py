@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from math import ceil
 
 from app.core.filters import LanguageOption, PushedBucket, StarBucket
@@ -65,6 +66,16 @@ def build_crawl_search_plan(
         for star_bucket in star_buckets
         for pushed_bucket in pushed_buckets
     )
+
+
+def fingerprint_crawl_search_plan(work_items: tuple[CrawlSearchWorkItem, ...]) -> str:
+    """Return a stable fingerprint for the exact query sequence of one crawl."""
+
+    digest = sha256()
+    for work_item in work_items:
+        digest.update(work_item.query.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def build_repository_search_query(

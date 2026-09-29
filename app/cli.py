@@ -32,6 +32,7 @@ class CatalogStatus:
     latest_run_completed_at: datetime | None
     latest_run_requests_made: int | None
     latest_run_repositories_seen: int | None
+    latest_run_resume_count: int | None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,9 +43,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Operate the local GH Random catalog.",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
-    subcommands.add_parser(
+    crawl_parser = subcommands.add_parser(
         "crawl",
         help="Run one complete, paced GitHub Search crawl and publish it on success.",
+    )
+    crawl_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue the latest failed crawl from its durable page checkpoint.",
     )
     subcommands.add_parser(
         "status",
@@ -53,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_crawl() -> CrawlSummary:
+def run_crawl(*, resume: bool = False) -> CrawlSummary:
     """Run the complete crawler using configuration from the environment."""
 
     settings = get_settings()
@@ -74,7 +80,7 @@ def run_crawl() -> CrawlSummary:
             create_session_factory(engine),
             search_client,
         )
-        return service.run_full_crawl()
+        return service.resume_full_crawl() if resume else service.run_full_crawl()
     finally:
         search_client.close()
         app_client.close()
@@ -112,6 +118,7 @@ def get_catalog_status() -> CatalogStatus:
                 latest_run_repositories_seen=(
                     latest_run.repositories_seen if latest_run is not None else None
                 ),
+                latest_run_resume_count=latest_run.resume_count if latest_run is not None else None,
             )
     finally:
         engine.dispose()
@@ -125,7 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if arguments.command == "crawl":
         try:
-            summary = run_crawl()
+            summary = run_crawl(resume=True) if arguments.resume else run_crawl()
         except Exception:
             LOGGER.exception(
                 "Full catalog crawl failed; the previous active catalog remains available."
@@ -158,6 +165,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             if status.latest_run_repositories_seen is not None
             else "none"
         )
+        resume_count = (
+            str(status.latest_run_resume_count)
+            if status.latest_run_resume_count is not None
+            else "none"
+        )
         active_at = _format_datetime(status.active_generation_activated_at)
         started_at = _format_datetime(status.latest_run_started_at)
         completed_at = _format_datetime(status.latest_run_completed_at)
@@ -169,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"run_status={run_status}, "
             f"started_at={started_at}, "
             f"completed_at={completed_at}, "
+            f"resumes={resume_count}, "
             f"requests={requests_made}, "
             f"repositories={repositories_seen}"
         )
