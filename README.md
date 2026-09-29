@@ -85,6 +85,13 @@ Start a complete catalog crawl:
 python -m app.cli crawl
 ~~~
 
+See the local catalog and crawl progress without exposing an operational HTTP
+endpoint:
+
+~~~powershell
+python -m app.cli status
+~~~
+
 On success, start the web application:
 
 ~~~powershell

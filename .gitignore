@@ -16,6 +16,8 @@ venv/
 
 # Local configuration
 .env
+crawl.log
+crawl-error.log
 
 # Editors and operating systems
 .vscode/

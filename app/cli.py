@@ -5,14 +5,33 @@ from __future__ import annotations
 import argparse
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy import select
 
 from app.core.settings import get_github_app_settings, get_settings
 from app.crawler.service import CrawlService, CrawlSummary
+from app.db.models import CatalogGeneration, CrawlRun
 from app.db.session import create_engine_from_url, create_session_factory
 from app.github.app_auth import GitHubAppClient
 from app.github.search import GitHubSearchClient
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CatalogStatus:
+    """A local operator's view of the active catalog and latest crawl."""
+
+    active_generation_id: int | None
+    active_generation_activated_at: datetime | None
+    latest_run_id: int | None
+    latest_run_status: str | None
+    latest_run_started_at: datetime | None
+    latest_run_completed_at: datetime | None
+    latest_run_requests_made: int | None
+    latest_run_repositories_seen: int | None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser(
         "crawl",
         help="Run one complete, paced GitHub Search crawl and publish it on success.",
+    )
+    subcommands.add_parser(
+        "status",
+        help="Show local catalog and latest-crawl status without a public web endpoint.",
     )
     return parser
 
@@ -58,6 +81,42 @@ def run_crawl() -> CrawlSummary:
         engine.dispose()
 
 
+def get_catalog_status() -> CatalogStatus:
+    """Read local crawl progress without importing or contacting GitHub."""
+
+    settings = get_settings()
+    engine = create_engine_from_url(settings.database_url)
+
+    try:
+        session_factory = create_session_factory(engine)
+        with session_factory() as session:
+            active_generation = session.scalar(
+                select(CatalogGeneration).where(CatalogGeneration.status == "active").limit(1)
+            )
+            latest_run = session.scalar(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(1))
+
+            return CatalogStatus(
+                active_generation_id=(
+                    active_generation.id if active_generation is not None else None
+                ),
+                active_generation_activated_at=(
+                    active_generation.activated_at if active_generation is not None else None
+                ),
+                latest_run_id=latest_run.id if latest_run is not None else None,
+                latest_run_status=latest_run.status if latest_run is not None else None,
+                latest_run_started_at=latest_run.started_at if latest_run is not None else None,
+                latest_run_completed_at=latest_run.completed_at if latest_run is not None else None,
+                latest_run_requests_made=(
+                    latest_run.requests_made if latest_run is not None else None
+                ),
+                latest_run_repositories_seen=(
+                    latest_run.repositories_seen if latest_run is not None else None
+                ),
+            )
+    finally:
+        engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch a command and return a shell-friendly exit code."""
 
@@ -82,7 +141,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
 
+    if arguments.command == "status":
+        status = get_catalog_status()
+        active_generation = (
+            str(status.active_generation_id) if status.active_generation_id is not None else "none"
+        )
+        latest_run = str(status.latest_run_id) if status.latest_run_id is not None else "none"
+        run_status = status.latest_run_status or "none"
+        requests_made = (
+            str(status.latest_run_requests_made)
+            if status.latest_run_requests_made is not None
+            else "none"
+        )
+        repositories_seen = (
+            str(status.latest_run_repositories_seen)
+            if status.latest_run_repositories_seen is not None
+            else "none"
+        )
+        active_at = _format_datetime(status.active_generation_activated_at)
+        started_at = _format_datetime(status.latest_run_started_at)
+        completed_at = _format_datetime(status.latest_run_completed_at)
+        print(
+            "Catalog status: "
+            f"active_generation={active_generation}, "
+            f"active_at={active_at}, "
+            f"latest_run={latest_run}, "
+            f"run_status={run_status}, "
+            f"started_at={started_at}, "
+            f"completed_at={completed_at}, "
+            f"requests={requests_made}, "
+            f"repositories={repositories_seen}"
+        )
+        return 0
+
     raise AssertionError(f"Unhandled command: {arguments.command!r}")
+
+
+def _format_datetime(value: datetime | None) -> str:
+    return value.isoformat() if value is not None else "none"
 
 
 if __name__ == "__main__":

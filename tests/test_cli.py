@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from app.cli import build_parser, main
+from app.cli import CatalogStatus, build_parser, main
 from app.crawler.planning import CRAWL_SORT_CYCLE
 from app.crawler.service import CrawlSummary
 
@@ -45,6 +45,34 @@ def test_crawl_command_returns_failure_when_a_crawl_errors(
         assert main(["crawl"]) == 1
 
     assert "previous active catalog remains available" in caplog.text
+
+
+def test_status_command_reports_local_catalog_and_crawl_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "app.cli.get_catalog_status",
+        lambda: CatalogStatus(
+            active_generation_id=4,
+            active_generation_activated_at=None,
+            latest_run_id=5,
+            latest_run_status="running",
+            latest_run_started_at=None,
+            latest_run_completed_at=None,
+            latest_run_requests_made=17,
+            latest_run_repositories_seen=1_234,
+        ),
+    )
+
+    assert main(["status"]) == 0
+
+    assert (
+        capsys.readouterr().out
+        == "Catalog status: active_generation=4, active_at=none, latest_run=5, "
+        "run_status=running, started_at=none, completed_at=none, requests=17, "
+        "repositories=1234\n"
+    )
 
 
 def test_cli_requires_an_explicit_command() -> None:

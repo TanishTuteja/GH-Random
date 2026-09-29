@@ -82,10 +82,10 @@ the same full name.
 
 ## 2026-09-29 — Local-only discovery requests
 
-The web interface calls a FastAPI endpoint that selects a row using the
-database's random-order function, constrained by the requested language, stars,
-and exact local pushed-at bounds. It joins only the ACTIVE generation; it
-does not import the GitHub client or make any network call during discovery.
+Both discovery routes select from the local database, constrained by the
+requested language, stars, and exact local pushed-at bounds. They join only the
+ACTIVE generation; they do not import the GitHub client or make any network
+call during discovery.
 
 Before the first successful full crawl, the endpoint returns a clear
 not-found response instead of silently falling back to GitHub. This makes the
@@ -103,6 +103,10 @@ The random-repository endpoint remains public by design so it can be used by
 the index page or external callers. It exposes local catalog metadata only and
 sends a no-store cache header because each call is intended to produce a fresh
 random selection.
+
+Crawler progress stays local-only through `python -m app.cli status`. This
+keeps the public web surface small while still providing operators with the
+latest run's state, request count, and discovered-repository count.
 
 ## 2026-09-29 — PostgreSQL from the first development environment
 
