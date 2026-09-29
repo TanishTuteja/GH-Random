@@ -18,6 +18,8 @@ venv/
 .env
 crawl.log
 crawl-error.log
+web.log
+web-error.log
 
 # Editors and operating systems
 .vscode/
