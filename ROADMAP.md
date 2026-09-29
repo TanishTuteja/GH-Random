@@ -5,11 +5,11 @@ of the current implementation.
 
 ## Catalog lifecycle
 
-- Replace the current replacement-snapshot publication model with a rolling
-  catalog. Retain repositories that a successful crawl does not rediscover for
-  an explicit retention window, then retire them from the active catalog. Define
-  that window before implementation (for example, a number of successful crawls,
-  elapsed time, or both), and retain `last_seen` information needed to apply it.
+- Revisit the current rolling-catalog policy. A new staging generation copies
+  active memberships, refreshes each repository rediscovered by the crawl, and
+  retires memberships whose `last_seen` time is more than 24 hours old when the
+  crawl publishes. Decide whether 24 hours is appropriate or whether retention
+  should instead be configured in successful-crawl counts, elapsed time, or both.
 
 ## Crawl coverage
 
