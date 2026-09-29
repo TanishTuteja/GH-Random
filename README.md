@@ -5,7 +5,23 @@ contacted only by a manual, paced crawler. Browser requests read from the last
 successfully published catalog generation, so browsing remains quick and
 predictable even while another crawl is running.
 
-## How it works
+## Architecture and catalog behavior
+
+GH Random has three independently started project services:
+
+```text
+Browser → FastAPI web application → PostgreSQL ← crawler → GitHub Search API
+```
+
+| Service | Responsibility | Start command |
+| --- | --- | --- |
+| PostgreSQL | Stores repository metadata, crawl runs, and catalog generations. | `docker compose up --detach database` |
+| FastAPI web application | Serves the index page and random-repository API from the active local catalog. | `uvicorn app.main:app --reload` |
+| Crawler | Authenticates as the GitHub App and builds a new staging catalog. | `python -m app.cli crawl` |
+
+The browser is an end-user client, not another project service. The web
+application and crawler both require PostgreSQL, but they do not start each
+other. The crawler alone contacts GitHub; the web application never does.
 
 One full crawl executes every combination of:
 
@@ -31,20 +47,20 @@ The initial filters are:
 
 The authoritative definitions live in app/core/filters.py.
 
-## Local setup
+## First-time local setup
 
-Requires Python 3.12 or newer.
+Requires Python 3.12 or newer, Docker Desktop, and a configured GitHub App
+installation and private key.
 
 ~~~powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
-docker compose up --detach database
 ~~~
 
-Fill the copied .env file with a local PostgreSQL password and the GitHub App
-values you created:
+Edit the copied `.env` file before starting Docker. It is ignored by Git. Fill
+it with a local PostgreSQL password and the GitHub App values you created:
 
 ~~~dotenv
 POSTGRES_DB=gh_random
@@ -64,59 +80,125 @@ GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 # GITHUB_APP_INSTALLATION_ID=12345678
 ~~~
 
-The PostgreSQL container binds only to 127.0.0.1 and creates both the application
-database and the isolated test database. Do not put the private key or any real
-deployment password in the repository.
-The two rate-limit settings only apply after GitHub explicitly returns a
-rate-limit response. The transport settings apply only to a network or timeout
-failure. Normal requests remain five seconds apart.
+Do not put the private key or any real deployment password in the repository.
+Unless a command says otherwise, the commands below assume the virtual
+environment is active; run `.\.venv\Scripts\Activate.ps1` in each new terminal.
 
-## Run it
+## 1. Database service
 
-Apply the database migrations before the first crawl:
+Start PostgreSQL after saving `.env`:
+
+~~~powershell
+docker compose up --detach database
+docker compose ps
+~~~
+
+The container binds PostgreSQL only to `127.0.0.1:5432`. Its named Docker volume
+persists the application database and isolated test database across container
+restarts.
+
+Apply database migrations before running the crawler or web application:
 
 ~~~powershell
 alembic upgrade head
+alembic current
 ~~~
 
-Start a complete catalog crawl:
+Useful database commands:
+
+~~~powershell
+docker compose logs --follow database
+docker compose down
+~~~
+
+`docker compose down` preserves database data. Do not use
+`docker compose down --volumes` unless you deliberately want to delete all local
+PostgreSQL data.
+
+## 2. Crawler service
+
+Start one full crawl in a terminal:
 
 ~~~powershell
 python -m app.cli crawl
 ~~~
 
-If a post-checkpoint crawl fails after its bounded request retries, continue the
-same staging generation without repeating completed search pages:
+It performs the 200 configured filter combinations and retrieves up to ten
+pages for each. Search request starts are at least five seconds apart, so a
+worst-case crawl can take roughly three hours. Do not start a second crawl while
+one is running.
 
-~~~powershell
-python -m app.cli crawl --resume
-~~~
-
-Resume verifies that the filter plan has not changed and always uses the
-original crawl's date boundaries and GitHub sort order. It remains explicit so
-an operator can inspect a failure before continuing it.
-
-See the local catalog and crawl progress without exposing an operational HTTP
-endpoint:
+Check the catalog and crawler state from another terminal:
 
 ~~~powershell
 python -m app.cli status
 ~~~
 
-On success, start the web application:
+If a checkpoint-enabled crawl fails after its bounded request retries, continue
+the same staging generation without repeating successfully stored pages:
 
 ~~~powershell
-uvicorn app.main:app --reload
+python -m app.cli crawl --resume
 ~~~
 
-Open http://127.0.0.1:8000. Before the first successful crawl, the page
-explains that no active matching catalog exists. It does not silently query
-GitHub as a fallback.
+Resume verifies that the filter plan has not changed and uses the original
+crawl's date boundaries and GitHub sort order. It is intentionally explicit:
+neither Docker nor the web application starts a crawl automatically.
 
-The only public routes are the index page and GET
-/api/random-repository. FastAPI documentation and OpenAPI routes, crawler
-status, health checks, and filter-configuration routes are deliberately not
-public.
+The two rate-limit settings only apply after GitHub explicitly returns a
+rate-limit response. The transport settings apply only to a network or timeout
+failure. Normal requests remain five seconds apart.
+
+## 3. Web application service
+
+Start the FastAPI development server in another terminal:
+
+~~~powershell
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+~~~
+
+Open http://127.0.0.1:8000. The web application can run while a crawler runs;
+it continues to serve the previous active catalog until a replacement is fully
+published. Before the first successful crawl, there is no active catalog and it
+cannot return a repository.
+
+The only public routes are:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` | Server-rendered repository discovery page. |
+| `GET /api/random-repository` | JSON random repository from the active local catalog. |
+
+The API accepts `language`, `star_bucket`, and `pushed_bucket` IDs. For example:
+
+~~~powershell
+Invoke-RestMethod "http://127.0.0.1:8000/api/random-repository?language=python&star_bucket=0-100&pushed_bucket=pushed-within-week"
+~~~
+
+FastAPI documentation and OpenAPI routes, health checks, crawler-status routes,
+and filter-configuration routes are deliberately not public.
+
+## Normal local workflow
+
+1. Start the database: `docker compose up --detach database`.
+2. Apply any newly added migration: `alembic upgrade head`.
+3. Start the web application whenever you want to use or test the UI.
+4. Run a crawler when you want to build or refresh the catalog.
+
+Steps 3 and 4 can run at the same time. The crawler needs GitHub credentials and
+internet access; the web application needs only the database.
+
+## Schema migrations
+
+Alembic records the schema revision applied to each database. A fresh database
+runs every migration in order when `alembic upgrade head` is first executed. A
+later deployment runs only migrations newer than its recorded revision. This
+allows schema changes to preserve existing production data.
+
+Before the first production deployment, the development migrations may
+optionally be squashed into one baseline migration once the schema is stable.
+After a database has been deployed, migration history must advance forward and
+should not be rewritten.
 
 ## Verification
 
