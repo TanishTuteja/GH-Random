@@ -16,6 +16,7 @@ venv/
 
 # Local configuration
 .env
+*.pem
 crawl.log
 crawl-error.log
 web.log
