@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     github_rate_limit_max_retries: int = Field(default=2, ge=0)
     github_transport_retry_seconds: float = Field(default=60.0, gt=0)
     github_transport_max_retries: int = Field(default=2, ge=0)
+    catalog_membership_retention_days: int = Field(default=3, ge=1)
 
 
 class GitHubAppSettings(BaseSettings):

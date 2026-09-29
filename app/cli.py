@@ -6,7 +6,7 @@ import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -79,6 +79,7 @@ def run_crawl(*, resume: bool = False) -> CrawlSummary:
         service = CrawlService(
             create_session_factory(engine),
             search_client,
+            stale_membership_retention=timedelta(days=settings.catalog_membership_retention_days),
         )
         return service.resume_full_crawl() if resume else service.run_full_crawl()
     finally:

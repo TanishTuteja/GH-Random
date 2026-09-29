@@ -188,7 +188,35 @@ def test_failed_crawl_keeps_prior_active_generation(
     assert [membership.github_id for membership in active_memberships] == [1]
 
 
-def test_successful_crawl_prunes_seeded_memberships_not_seen_for_over_24_hours(
+def test_next_normal_crawl_starts_after_a_failed_crawl(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with pytest.raises(RuntimeError, match="GitHub is unavailable"):
+        _service(
+            session_factory,
+            FakeRepositorySearcher([RuntimeError("GitHub is unavailable")]),
+            STARTED_AT,
+        ).run_full_crawl()
+
+    summary = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(2))]),
+        STARTED_AT + timedelta(days=1),
+    ).run_full_crawl()
+
+    with session_factory() as session:
+        runs = list(session.scalars(select(CrawlRun).order_by(CrawlRun.id)))
+        generations = list(
+            session.scalars(select(CatalogGeneration).order_by(CatalogGeneration.id))
+        )
+
+    assert summary.run_id == 2
+    assert (summary.ordering.sort, summary.ordering.order) == ("updated", "desc")
+    assert [run.status for run in runs] == ["failed", "completed"]
+    assert [generation.status for generation in generations] == ["failed", "active"]
+
+
+def test_successful_crawl_prunes_seeded_memberships_not_seen_for_over_three_days(
     session_factory: sessionmaker[Session],
 ) -> None:
     _service(
@@ -200,7 +228,7 @@ def test_successful_crawl_prunes_seeded_memberships_not_seen_for_over_24_hours(
     summary = _service(
         session_factory,
         FakeRepositorySearcher([_page(_payload(2))]),
-        STARTED_AT + timedelta(hours=24, seconds=1),
+        STARTED_AT + timedelta(days=3, seconds=1),
     ).run_full_crawl()
 
     with session_factory() as session:

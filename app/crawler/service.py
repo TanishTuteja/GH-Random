@@ -25,7 +25,7 @@ from app.crawler.planning import (
 from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Repository
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
 
-STALE_MEMBERSHIP_RETENTION = timedelta(hours=24)
+DEFAULT_STALE_MEMBERSHIP_RETENTION = timedelta(days=3)
 
 
 def _utc_now() -> datetime:
@@ -82,12 +82,17 @@ class CrawlService:
         clock: Callable[[], datetime] = _utc_now,
         plan_builder: Callable[[datetime], tuple[CrawlSearchWorkItem, ...]] | None = None,
         logger: logging.Logger | None = None,
+        stale_membership_retention: timedelta = DEFAULT_STALE_MEMBERSHIP_RETENTION,
     ) -> None:
+        if stale_membership_retention <= timedelta():
+            raise ValueError("Catalog membership retention must be positive.")
+
         self._session_factory = session_factory
         self._searcher = searcher
         self._clock = clock
         self._plan_builder = plan_builder or self._default_plan
         self._logger = logger or logging.getLogger(__name__)
+        self._stale_membership_retention = stale_membership_retention
 
     def run_full_crawl(self) -> CrawlSummary:
         """Run all configured queries and publish only if every request succeeds."""
@@ -435,7 +440,7 @@ class CrawlService:
         *,
         completed_at: datetime,
     ) -> CrawlSummary:
-        cutoff = completed_at - STALE_MEMBERSHIP_RETENTION
+        cutoff = completed_at - self._stale_membership_retention
 
         with self._session_factory() as session, session.begin():
             crawl_run = session.get(CrawlRun, run_id)

@@ -135,13 +135,18 @@ failed state for inspection, while preventing a network interruption from
 discarding hours of successful requests. Crawls that failed before this feature
 was deployed lack a durable cursor and cannot be resumed exactly.
 
-## 2026-09-30 — The active catalog rolls forward with a 24-hour retention window
+## 2026-09-30 — The active catalog rolls forward with a three-day retention window
 
 Starting a crawl copies the active generation's repository memberships into the
 new staging generation. Repositories rediscovered by that crawl have their
 membership `last_seen` time refreshed. At successful publication, the crawler
-removes only memberships not seen during the preceding 24 hours, then atomically
+removes only memberships not seen during the preceding three days, then atomically
 activates the new generation. This avoids dropping repositories merely because a
-single GitHub Search crawl did not return them. The 24-hour duration is provisional
-and is tracked for review in `ROADMAP.md`.
+single GitHub Search crawl did not return them. The default is configured through
+`CATALOG_MEMBERSHIP_RETENTION_DAYS`, currently set to three, and is tracked for
+review in `ROADMAP.md`.
+
+Production scheduling will start one normal crawl every 24 hours. A failed run
+does not block that later normal crawl: only a `running` crawl prevents another
+start, and an explicit `--resume` remains an operator choice.
 
