@@ -59,8 +59,13 @@ the atomic generation swap.
 A failed request marks that crawl and its staging generation FAILED, leaving the
 previous ACTIVE generation untouched. The next sort mode is selected only after
 a successfully completed crawl, so a failed run does not consume a rotation
-slot. The MVP does not retry individual GitHub requests automatically: it
-preserves the failure for inspection and requires a fresh, complete crawl.
+slot. The client makes no general request retries: it preserves failures for
+inspection and requires a fresh, complete crawl.
+
+The exception is an explicit GitHub rate-limit response. The client performs a
+bounded retry using GitHub's Retry-After header when present, otherwise the
+configured 60-second fallback. This pause supplements, rather than replaces,
+the five-second minimum between ordinary request starts.
 
 ## 2026-09-29 — Local-only discovery requests
 

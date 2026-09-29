@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 
-from app.github.search import GitHubSearchClient, RequestPacer
+from app.github.search import GitHubSearchClient, GitHubSearchError, RequestPacer
 
 
 @dataclass
@@ -112,3 +112,80 @@ def test_search_rejects_order_without_sort() -> None:
             client.search_repositories("language:Go", order="asc")
     finally:
         client.close()
+
+
+def test_search_retries_an_explicit_github_rate_limit_with_retry_after() -> None:
+    requests = 0
+    rate_limit_sleeps: list[float] = []
+    pacer_sleeps: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            return httpx.Response(
+                403,
+                headers={"Retry-After": "15"},
+                json={"message": "You have exceeded a secondary rate limit."},
+            )
+        return httpx.Response(
+            200,
+            json={"total_count": 0, "incomplete_results": False, "items": []},
+        )
+
+    pacer = RequestPacer(
+        5.0,
+        clock=lambda: 100.0,
+        sleeper=pacer_sleeps.append,
+    )
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = GitHubSearchClient(
+        FakeTokenProvider(),
+        request_delay_seconds=5.0,
+        http_client=http_client,
+        request_pacer=pacer,
+        rate_limit_sleeper=rate_limit_sleeps.append,
+    )
+
+    try:
+        result = client.search_repositories("language:Python")
+    finally:
+        http_client.close()
+
+    assert result.repositories == ()
+    assert requests == 2
+    assert rate_limit_sleeps == [15.0]
+    assert pacer_sleeps == [5.0]
+
+
+def test_search_stops_after_the_configured_rate_limit_retry_count() -> None:
+    requests = 0
+    rate_limit_sleeps: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(
+            429,
+            json={"message": "API rate limit exceeded"},
+        )
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = GitHubSearchClient(
+        FakeTokenProvider(),
+        request_delay_seconds=5.0,
+        http_client=http_client,
+        request_pacer=RequestPacer(5.0, sleeper=lambda _: None),
+        rate_limit_retry_seconds=30.0,
+        rate_limit_max_retries=1,
+        rate_limit_sleeper=rate_limit_sleeps.append,
+    )
+
+    try:
+        with pytest.raises(GitHubSearchError, match="API rate limit exceeded"):
+            client.search_repositories("language:Python")
+    finally:
+        http_client.close()
+
+    assert requests == 2
+    assert rate_limit_sleeps == [30.0]

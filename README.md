@@ -47,6 +47,8 @@ Fill the copied .env file with the GitHub App values you created:
 ~~~dotenv
 DATABASE_URL=sqlite:///./gh_random.db
 GITHUB_SEARCH_DELAY_SECONDS=5
+GITHUB_RATE_LIMIT_RETRY_SECONDS=60
+GITHUB_RATE_LIMIT_MAX_RETRIES=2
 GITHUB_APP_CLIENT_ID=your-client-id
 GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 # Optional when the App has exactly one installation:
@@ -55,6 +57,8 @@ GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 
 Do not put the private key in the repository. The default SQLite URL is suitable
 for local development; set DATABASE_URL to a PostgreSQL URL when deploying.
+The two rate-limit settings only apply after GitHub explicitly returns a
+rate-limit response; normal requests remain five seconds apart.
 
 ## Run it
 

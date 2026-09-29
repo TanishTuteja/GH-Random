@@ -40,6 +40,8 @@ def run_crawl() -> CrawlSummary:
     search_client = GitHubSearchClient(
         app_client,
         request_delay_seconds=settings.github_search_delay_seconds,
+        rate_limit_retry_seconds=settings.github_rate_limit_retry_seconds,
+        rate_limit_max_retries=settings.github_rate_limit_max_retries,
     )
 
     try:
