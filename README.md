@@ -115,6 +115,47 @@ docker compose down
 `docker compose down --volumes` unless you deliberately want to delete all local
 PostgreSQL data.
 
+### Optional local pgAdmin interface
+
+pgAdmin is a separate, local-only browser interface for inspecting tables,
+editing rows, and running SQL. Before starting it, set a local pgAdmin login in
+`.env`:
+
+~~~dotenv
+PGADMIN_DEFAULT_EMAIL=your-local-email@example.test
+PGADMIN_DEFAULT_PASSWORD=choose-a-local-pgadmin-password
+PGADMIN_PORT=5050
+~~~
+
+Start the optional admin service and open http://127.0.0.1:5050:
+
+~~~powershell
+docker compose --profile admin up --detach pgadmin
+~~~
+
+Log in with the pgAdmin email and password above, then register the local
+PostgreSQL server with these connection values:
+
+| Field | Value |
+| --- | --- |
+| Host name/address | `database` |
+| Port | `5432` |
+| Maintenance database | `gh_random` |
+| Username | `gh_random` |
+| Password | The local `POSTGRES_PASSWORD` from `.env` |
+
+pgAdmin runs in a container, but its HTTP port is mapped only to the host's
+loopback interface. It reaches PostgreSQL through Docker Compose's private
+network as `database:5432`; the FastAPI process reaches the same PostgreSQL
+server through the host mapping at `127.0.0.1:5432`. Do not expose pgAdmin to
+the public internet or ship it with the production application.
+
+Stop the optional UI without stopping PostgreSQL:
+
+~~~powershell
+docker compose --profile admin stop pgadmin
+~~~
+
 ## 2. Crawler service
 
 Start one full crawl in a terminal:
