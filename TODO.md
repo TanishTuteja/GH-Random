@@ -10,3 +10,6 @@
   whether to squash the development-only Alembic history into one baseline
   migration. Rebuild or explicitly stamp the development database as part of
   that controlled transition; do not rewrite migration history after deployment.
+
+- Define a retention and cleanup policy for failed, abandoned, and superseded
+  catalog generations, so staging snapshots do not accumulate indefinitely.
