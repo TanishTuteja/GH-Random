@@ -87,6 +87,11 @@ Open http://127.0.0.1:8000. Before the first successful crawl, the page
 explains that no active matching catalog exists. It does not silently query
 GitHub as a fallback.
 
+The only public routes are the index page and GET
+/api/random-repository. FastAPI documentation and OpenAPI routes, crawler
+status, health checks, and filter-configuration routes are deliberately not
+public.
+
 ## Verification
 
 ~~~powershell

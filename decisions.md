@@ -90,3 +90,16 @@ does not import the GitHub client or make any network call during discovery.
 Before the first successful full crawl, the endpoint returns a clear
 not-found response instead of silently falling back to GitHub. This makes the
 local-first guarantee visible and keeps user requests predictable.
+
+## 2026-09-29 — Minimal public web surface
+
+The public application exposes only the server-rendered index page and the
+random-repository endpoint. Filter options are rendered into the page, while
+the page itself submits filters back to the index route. Health, crawler-status,
+and filter-options endpoints are not public, and FastAPI's documentation,
+ReDoc, and OpenAPI routes are disabled.
+
+The random-repository endpoint remains public by design so it can be used by
+the index page or external callers. It exposes local catalog metadata only and
+sends a no-store cache header because each call is intended to produce a fresh
+random selection.

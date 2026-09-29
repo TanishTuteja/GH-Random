@@ -52,7 +52,7 @@ def _repository(repository_id: int) -> Repository:
     )
 
 
-def test_web_page_and_api_use_only_active_catalog(
+def test_index_and_public_random_api_use_only_active_catalog(
     catalog_database: tuple[Engine, sessionmaker[Session]],
 ) -> None:
     _, session_factory = catalog_database
@@ -83,8 +83,15 @@ def test_web_page_and_api_use_only_active_catalog(
         clock=lambda: NOW,
     )
     with TestClient(app) as client:
-        page = client.get("/")
-        filter_options = client.get("/api/filter-options")
+        page = client.get(
+            "/",
+            params={
+                "discover": "true",
+                "language": "python",
+                "star_bucket": "0-100",
+                "pushed_bucket": "pushed-within-week",
+            },
+        )
         response = client.get(
             "/api/random-repository",
             params={
@@ -93,18 +100,29 @@ def test_web_page_and_api_use_only_active_catalog(
                 "pushed_bucket": "pushed-within-week",
             },
         )
+        disabled_routes = {
+            path: client.get(path).status_code
+            for path in [
+                "/health",
+                "/api/filter-options",
+                "/docs",
+                "/redoc",
+                "/openapi.json",
+                "/static/styles.css",
+            ]
+        }
 
     assert page.status_code == 200
-    assert "Find a repository" in page.text
+    assert "octo/repository-1" in page.text
     assert 'name="pushed_bucket"' in page.text
-    assert filter_options.status_code == 200
-    assert len(filter_options.json()["languages"]) == 10
     assert response.status_code == 200
     assert response.json()["github_id"] == 1
     assert response.json()["topics"] == ["testing"]
+    assert response.headers["cache-control"] == "no-store"
+    assert set(disabled_routes.values()) == {404}
 
 
-def test_random_repository_api_reports_invalid_or_empty_requests(
+def test_public_random_api_reports_invalid_or_empty_requests(
     catalog_database: tuple[Engine, sessionmaker[Session]],
 ) -> None:
     _, session_factory = catalog_database

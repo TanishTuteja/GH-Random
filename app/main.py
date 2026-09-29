@@ -7,8 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
@@ -26,17 +25,6 @@ from app.db.session import create_engine_from_url, create_session_factory
 
 APP_DIRECTORY = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIRECTORY / "templates"))
-
-
-class FilterOptionResponse(BaseModel):
-    id: str
-    label: str
-
-
-class FilterOptionsResponse(BaseModel):
-    languages: list[FilterOptionResponse]
-    star_buckets: list[FilterOptionResponse]
-    pushed_buckets: list[FilterOptionResponse]
 
 
 class RandomRepositoryResponse(BaseModel):
@@ -82,11 +70,46 @@ def create_app(
             if owned_engine is not None:
                 owned_engine.dispose()
 
-    app = FastAPI(title=runtime_settings.app_name, lifespan=lifespan)
-    app.mount("/static", StaticFiles(directory=APP_DIRECTORY / "static"), name="static")
+    app = FastAPI(
+        title=runtime_settings.app_name,
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     @app.get("/", include_in_schema=False)
-    def index(request: Request) -> object:
+    def index(
+        request: Request,
+        discover: bool = Query(default=False),
+        language: str = Query(default=SUPPORTED_LANGUAGES[0].id),
+        star_bucket: str = Query(default=STAR_BUCKETS[0].id),
+        pushed_bucket: str = Query(default=PUSHED_BUCKETS[0].id),
+    ) -> object:
+        repository = None
+        error_message = None
+        if discover:
+            try:
+                selection = resolve_filter_selection(
+                    language_id=language,
+                    star_bucket_id=star_bucket,
+                    pushed_bucket_id=pushed_bucket,
+                )
+            except FilterSelectionError as error:
+                error_message = str(error)
+            else:
+                with session_factory() as session:
+                    repository = find_random_active_repository(
+                        session,
+                        selection,
+                        now=clock(),
+                    )
+                if repository is None:
+                    error_message = (
+                        "No active catalog repository matches these filters. "
+                        "Run a successful full crawl, or choose different filters."
+                    )
+
         return templates.TemplateResponse(
             request=request,
             name="index.html",
@@ -94,29 +117,21 @@ def create_app(
                 "languages": SUPPORTED_LANGUAGES,
                 "star_buckets": STAR_BUCKETS,
                 "pushed_buckets": PUSHED_BUCKETS,
+                "selected_language": language,
+                "selected_star_bucket": star_bucket,
+                "selected_pushed_bucket": pushed_bucket,
+                "repository": repository,
+                "error_message": error_message,
             },
         )
 
-    @app.get("/health", tags=["system"])
-    def health_check() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/api/filter-options", response_model=FilterOptionsResponse, tags=["catalog"])
-    def filter_options() -> FilterOptionsResponse:
-        return FilterOptionsResponse(
-            languages=[
-                FilterOptionResponse(id=item.id, label=item.label) for item in SUPPORTED_LANGUAGES
-            ],
-            star_buckets=[
-                FilterOptionResponse(id=item.id, label=item.label) for item in STAR_BUCKETS
-            ],
-            pushed_buckets=[
-                FilterOptionResponse(id=item.id, label=item.label) for item in PUSHED_BUCKETS
-            ],
-        )
-
-    @app.get("/api/random-repository", response_model=RandomRepositoryResponse, tags=["catalog"])
+    @app.get(
+        "/api/random-repository",
+        response_model=RandomRepositoryResponse,
+        include_in_schema=False,
+    )
     def random_repository(
+        response: Response,
         language: str = Query(default=SUPPORTED_LANGUAGES[0].id),
         star_bucket: str = Query(default=STAR_BUCKETS[0].id),
         pushed_bucket: str = Query(default=PUSHED_BUCKETS[0].id),
@@ -140,11 +155,10 @@ def create_app(
         if repository is None:
             raise HTTPException(
                 status_code=404,
-                detail=(
-                    "No active catalog repository matches these filters. "
-                    "Run a successful full crawl, or choose different filters."
-                ),
+                detail="No active catalog repository matches these filters.",
             )
+
+        response.headers["Cache-Control"] = "no-store"
         return _repository_response(repository)
 
     return app
