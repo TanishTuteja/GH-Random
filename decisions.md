@@ -61,3 +61,14 @@ previous ACTIVE generation untouched. The next sort mode is selected only after
 a successfully completed crawl, so a failed run does not consume a rotation
 slot. The MVP does not retry individual GitHub requests automatically: it
 preserves the failure for inspection and requires a fresh, complete crawl.
+
+## 2026-09-29 — Local-only discovery requests
+
+The web interface calls a FastAPI endpoint that selects a row using the
+database's random-order function, constrained by the requested language, stars,
+and exact local pushed-at bounds. It joins only the ACTIVE generation; it
+does not import the GitHub client or make any network call during discovery.
+
+Before the first successful full crawl, the endpoint returns a clear
+not-found response instead of silently falling back to GitHub. This makes the
+local-first guarantee visible and keeps user requests predictable.

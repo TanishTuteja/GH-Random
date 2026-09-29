@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Discover a random GitHub repository from a local catalog.">
+    <title>GH Random</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+    <script src="{{ url_for('static', path='app.js') }}" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">LOCAL GITHUB DISCOVERY</p>
+        <h1>Find a repository<br>worth opening.</h1>
+        <p class="lede">
+          Search the catalog, not the live API. Every result came from a paced,
+          repeatable crawl.
+        </p>
+      </header>
+
+      <section class="discovery-panel" aria-labelledby="filters-title">
+        <div class="panel-heading">
+          <p class="eyebrow">SET THE SIGNAL</p>
+          <h2 id="filters-title">What should we surface?</h2>
+        </div>
+        <form id="repository-form">
+          <div class="filters">
+            <label>
+              Language
+              <select name="language">
+                {% for language in languages %}
+                <option value="{{ language.id }}">{{ language.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Stars
+              <select name="star_bucket">
+                {% for bucket in star_buckets %}
+                <option value="{{ bucket.id }}">{{ bucket.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Last pushed
+              <select name="pushed_bucket">
+                {% for bucket in pushed_buckets %}
+                <option value="{{ bucket.id }}">{{ bucket.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <button type="submit" id="discover-button">Discover a repository <span aria-hidden="true">→</span></button>
+        </form>
+      </section>
+
+      <section id="result" class="result empty" aria-live="polite">
+        <p>Choose a direction and reveal a repository from the active catalog.</p>
+      </section>
+    </main>
+  </body>
+</html>
