@@ -3,58 +3,61 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Discover a random GitHub repository from a local catalog.">
+    <meta name="description" content="Discover a random GitHub repository.">
     <title>GH Random</title>
     <style>
-      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #101114; color: #f8f5ee; }
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f6f6f4; color: #242424; }
       * { box-sizing: border-box; }
-      body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 88% 5%, #344d37 0, transparent 27rem), #101114; }
-      .shell { width: min(100% - 2rem, 60rem); margin: 0 auto; padding: 5rem 0 4rem; }
-      .hero { max-width: 43rem; padding: 0 1rem 3.75rem; }
-      .eyebrow { margin: 0 0 .8rem; color: #b7f673; font-size: .73rem; font-weight: 800; letter-spacing: .14em; }
+      body { min-height: 100vh; margin: 0; background: #f6f6f4; }
+      .shell { width: min(100% - 2rem, 42rem); margin: 0 auto; padding: clamp(1.5rem, 4vw, 2.75rem) 0 1.5rem; }
       h1, h2, p { margin-top: 0; }
-      h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -.045em; }
-      h1 { margin-bottom: 1rem; font-size: clamp(3.1rem, 8vw, 6.2rem); line-height: .91; }
-      h2 { margin-bottom: .9rem; font-size: clamp(1.9rem, 5vw, 2.8rem); }
-      .lede, .description { color: #c7c5bd; font-size: 1.05rem; line-height: 1.65; }
-      .discovery-panel, .result { border: 1px solid #353941; border-radius: 1.3rem; background: rgb(22 24 29 / 88%); box-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 16%); }
-      .discovery-panel, .result { padding: clamp(1.4rem, 4vw, 2.4rem); }
-      .panel-heading { margin-bottom: 1.65rem; }
-      .panel-heading h2 { margin-bottom: 0; }
-      .filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-      label { display: grid; gap: .45rem; color: #d2d1cc; font-size: .85rem; font-weight: 700; }
-      select, button { border: 1px solid #525761; border-radius: .7rem; font: inherit; }
-      select { width: 100%; min-height: 2.9rem; padding: .65rem .75rem; color: #f8f5ee; background: #181a20; }
-      button { width: 100%; margin-top: 1.6rem; padding: .95rem 1.2rem; color: #15200c; background: #b7f673; cursor: pointer; font-weight: 850; }
+      h1, h2 { letter-spacing: -.04em; }
+      h1 { margin-bottom: .55rem; font-size: clamp(2rem, 7vw, 3rem); line-height: 1.1; }
+      h2 { margin-bottom: .7rem; font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.2; }
+      .hero { margin-bottom: 2rem; }
+      .lede, .description { color: #6a6a67; line-height: 1.55; }
+      .lede { margin-bottom: 0; }
+      .discovery-panel, .result { border: 1px solid #deded9; border-radius: .75rem; background: #fff; }
+      .discovery-panel { padding: 1.25rem; }
+      .panel-heading { margin-bottom: 1.2rem; }
+      .panel-heading h2 { margin-bottom: .35rem; font-size: 1.1rem; letter-spacing: -.02em; }
+      .panel-copy { margin-bottom: 0; color: #777773; font-size: .9rem; line-height: 1.5; }
+      .eyebrow { display: none; }
+      .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+      label { display: grid; gap: .4rem; color: #53534f; font-size: .78rem; font-weight: 650; }
+      select, button { width: 100%; border-radius: .45rem; font: inherit; }
+      select { min-height: 2.7rem; padding: .55rem .65rem; border: 1px solid #d4d4cf; background: #fff; color: #242424; font-size: .9rem; }
+      select:focus-visible, button:focus-visible, .repository h2 a:focus-visible { outline: 3px solid #a6d2b3; outline-offset: 2px; }
+      button { margin-top: 1rem; padding: .78rem 1rem; border: 1px solid #242424; background: #242424; color: #fff; cursor: pointer; font-weight: 680; }
+      button:hover { background: #3e3e3a; }
       button:disabled { cursor: progress; opacity: .7; }
-      .result { position: relative; min-height: 9rem; margin-top: 1.5rem; overflow-anchor: none; }
-      .result.is-loading::after { content: "Finding a repository…"; position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: rgb(24 26 32 / .88); color: #f8f5ee; font-weight: 750; }
-      .empty { color: #b7b8b2; text-align: center; }
-      .error { border-color: #a75b68; color: #ffb2bc; }
-      .repository h2 a { color: #f8f5ee; text-decoration-color: #b7f673; text-underline-offset: .18em; }
-      .metadata { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: .65rem 1.2rem; margin: 1.65rem 0; padding: 1.25rem 0; border-top: 1px solid #363b42; border-bottom: 1px solid #363b42; }
-      .metadata dt, .catalog-note { color: #969a9a; font-size: .82rem; }
-      .metadata dd { margin: 0; font-weight: 700; }
-      .topics { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; }
-      .topics li { padding: .32rem .62rem; border-radius: 999px; color: #d4fcb4; background: #2a422b; font-size: .8rem; }
-      @media (max-width: 40rem) { .shell { padding-top: 3rem; } .filters { grid-template-columns: 1fr; } .metadata { grid-template-columns: max-content 1fr; } }
+      .button-arrow { margin-left: .15rem; }
+      .result { position: relative; min-height: 8rem; margin-top: .85rem; padding: 1.25rem; overflow-anchor: none; }
+      .result.is-loading::after { content: "Finding a repository…"; position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: rgb(255 255 255 / .92); color: #242424; font-size: .9rem; }
+      .empty { display: grid; place-items: center; color: #777773; text-align: center; }
+      .empty p { max-width: 20rem; margin-bottom: 0; line-height: 1.5; }
+      .error { border-color: #e2bbb5; color: #9c4035; }
+      .repository h2 a { color: #242424; text-decoration-color: #a6d2b3; text-decoration-thickness: .1em; text-underline-offset: .14em; }
+      .metadata { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; margin: 1.35rem 0 1.1rem; }
+      .metadata div { min-width: 0; padding: .65rem; border-radius: .45rem; background: #f6f6f4; }
+      .metadata dt { margin-bottom: .25rem; color: #7b7b76; font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+      .metadata dd { margin: 0; overflow-wrap: anywhere; color: #353532; font-size: .86rem; font-weight: 650; }
+      .topics { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+      .topics li { padding: .28rem .55rem; border: 1px solid #d7d7d1; border-radius: 999px; color: #555550; font-size: .76rem; }
+      @media (max-width: 36rem) { .filters, .metadata { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
     <main class="shell">
       <header class="hero">
-        <p class="eyebrow">LOCAL GITHUB DISCOVERY</p>
-        <h1>Find a repository<br>worth opening.</h1>
-        <p class="lede">
-          Search the catalog, not the live API. Every result came from a paced,
-          repeatable crawl.
-        </p>
+        <h1>GitHub Repository Finder</h1>
+        <p class="lede">Discover a random open-source project.</p>
       </header>
 
       <section class="discovery-panel" aria-labelledby="filters-title">
         <div class="panel-heading">
-          <p class="eyebrow">SET THE SIGNAL</p>
-          <h2 id="filters-title">What should we surface?</h2>
+          <h2 id="filters-title">Filters</h2>
+          <p class="panel-copy">Leave any filter open to broaden the results.</p>
         </div>
         <form id="discovery-form" action="/" method="get">
           <input type="hidden" name="discover" value="true">
@@ -84,29 +87,27 @@
               </select>
             </label>
           </div>
-          <button type="submit">Discover a repository <span aria-hidden="true">→</span></button>
+          <button type="submit">Find a repository <span class="button-arrow" aria-hidden="true">→</span></button>
         </form>
       </section>
 
       {% if repository %}
       <section id="result-panel" class="result repository" aria-live="polite">
-        <p class="eyebrow">RANDOM RESULT</p>
         <h2><a href="{{ repository.html_url }}" target="_blank" rel="noreferrer">{{ repository.full_name }}</a></h2>
         <p class="description">{{ repository.description or "No description was provided." }}</p>
         <dl class="metadata">
-          <dt>Language</dt><dd>{{ repository.language or "Not specified" }}</dd>
-          <dt>Stars</dt><dd>{{ "{:,}".format(repository.stargazer_count) }}</dd>
-          <dt>Forks</dt><dd>{{ "{:,}".format(repository.fork_count) }}</dd>
-          <dt>Open issues</dt><dd>{{ "{:,}".format(repository.open_issues_count) }}</dd>
-          <dt>Last pushed</dt><dd>{{ repository.github_pushed_at or "Not available" }}</dd>
-          <dt>Updated</dt><dd>{{ repository.github_updated_at }}</dd>
+          <div><dt>Language</dt><dd>{{ repository.language or "Not specified" }}</dd></div>
+          <div><dt>Stars</dt><dd>{{ "{:,}".format(repository.stargazer_count) }}</dd></div>
+          <div><dt>Forks</dt><dd>{{ "{:,}".format(repository.fork_count) }}</dd></div>
+          <div><dt>Open issues</dt><dd>{{ "{:,}".format(repository.open_issues_count) }}</dd></div>
+          <div><dt>Last pushed</dt><dd>{% if repository.github_pushed_at %}<time class="local-time" datetime="{{ repository.github_pushed_at.isoformat() }}">{{ repository.github_pushed_at }}</time>{% else %}Not available{% endif %}</dd></div>
+          <div><dt>Updated</dt><dd><time class="local-time" datetime="{{ repository.github_updated_at.isoformat() }}">{{ repository.github_updated_at }}</time></dd></div>
         </dl>
         {% if repository.topics %}
         <ul class="topics">
           {% for topic in repository.topics %}<li>{{ topic }}</li>{% endfor %}
         </ul>
         {% endif %}
-        <p class="catalog-note">Last seen by this catalog: {{ repository.last_seen_at }}</p>
       </section>
       {% elif error_message %}
       <section id="result-panel" class="result error" aria-live="polite">
@@ -114,7 +115,7 @@
       </section>
       {% else %}
       <section id="result-panel" class="result empty" aria-live="polite">
-        <p>Choose a direction and reveal a repository from the active catalog.</p>
+        <p>Pick a few filters, then discover something new.</p>
       </section>
       {% endif %}
     </main>
@@ -127,8 +128,12 @@
         const submitButton = form.querySelector('button[type="submit"]');
         const numberFormatter = new Intl.NumberFormat();
         const dateFormatter = new Intl.DateTimeFormat(undefined, {
-          dateStyle: "medium",
-          timeStyle: "short",
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
         });
 
         const element = (tagName, text, className) => {
@@ -139,6 +144,10 @@
         };
 
         const formatDate = (value) => value ? dateFormatter.format(new Date(value)) : "Not available";
+
+        for (const timestamp of document.querySelectorAll("time.local-time")) {
+          timestamp.textContent = formatDate(timestamp.dateTime);
+        }
 
         const preserveViewport = (update) => {
           const scrollX = window.scrollX;
@@ -158,7 +167,6 @@
 
         const showRepository = (repository) => {
           resultPanel.className = "result repository";
-          const eyebrow = element("p", "RANDOM RESULT", "eyebrow");
           const heading = element("h2");
           const link = element("a", repository.full_name);
           link.href = repository.html_url;
@@ -181,18 +189,17 @@
             ["Updated", formatDate(repository.github_updated_at)],
           ];
           for (const [label, value] of fields) {
-            metadata.append(element("dt", label), element("dd", value));
+            const item = element("div");
+            item.append(element("dt", label), element("dd", value));
+            metadata.append(item);
           }
 
-          const children = [eyebrow, heading, description, metadata];
+          const children = [heading, description, metadata];
           if (repository.topics.length) {
             const topics = element("ul", undefined, "topics");
             for (const topic of repository.topics) topics.append(element("li", topic));
             children.push(topics);
           }
-          children.push(
-            element("p", `Last seen by this catalog: ${formatDate(repository.last_seen_at)}`, "catalog-note"),
-          );
           resultPanel.replaceChildren(...children);
         };
 

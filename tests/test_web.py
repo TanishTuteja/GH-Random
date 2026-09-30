@@ -101,6 +101,13 @@ def test_index_and_public_random_api_use_only_active_catalog(
 
     assert initial_page.status_code == 200
     assert initial_page.text.count('value="any"') == 3
+    assert "GitHub Repository Finder" in initial_page.text
+    assert "Search the catalog" not in initial_page.text
+    assert "paced, repeatable crawl" not in initial_page.text
+    assert "SET THE SIGNAL" not in initial_page.text
+    assert "Last seen by this catalog" not in initial_page.text
+    assert 'class="local-time"' in page.text
+    assert 'timeZoneName: "short"' in page.text
     assert 'id="discovery-form"' in initial_page.text
     assert "event.preventDefault()" in initial_page.text
     assert "history.replaceState" in initial_page.text
