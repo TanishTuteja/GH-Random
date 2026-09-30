@@ -80,6 +80,7 @@ def run_crawl(*, resume: bool = False) -> CrawlSummary:
             create_session_factory(engine),
             search_client,
             stale_membership_retention=timedelta(days=settings.catalog_membership_retention_days),
+            generation_retention=timedelta(days=settings.catalog_generation_retention_days),
         )
         return service.resume_full_crawl() if resume else service.run_full_crawl()
     finally:

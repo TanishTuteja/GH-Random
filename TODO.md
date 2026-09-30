@@ -1,10 +1,5 @@
 # TODO
 
-## Before release
-
-- Define a retention and cleanup policy for failed, abandoned, and superseded
-  catalog generations, so staging snapshots do not accumulate indefinitely.
-
 ## Deployment — Oracle Cloud Always Free
 
 ### Infrastructure and network
@@ -73,4 +68,4 @@
   destination. Avoid alert loops and test one intentional failure before launch.
 - Send service logs to journald with rotation, document `journalctl` and the local
   `python -m app.cli status` operator commands, and monitor database disk use,
-  backup failures, and the three-day rolling-catalog retention behavior.
+  backup failures, the three-day rolling catalog, and seven-day snapshot retention.

@@ -243,6 +243,73 @@ def test_successful_crawl_prunes_seeded_memberships_not_seen_for_over_three_days
     assert [membership.github_id for membership in active_memberships] == [2]
 
 
+def test_successful_crawl_prunes_expired_history_and_orphaned_repositories(
+    session_factory: sessionmaker[Session],
+) -> None:
+    _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(1))]),
+        STARTED_AT,
+    ).run_full_crawl()
+
+    with pytest.raises(RuntimeError, match="GitHub is unavailable"):
+        _service(
+            session_factory,
+            FakeRepositorySearcher([RuntimeError("GitHub is unavailable")]),
+            STARTED_AT + timedelta(hours=1),
+        ).run_full_crawl()
+
+    summary = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(3))]),
+        STARTED_AT + timedelta(days=8),
+    ).run_full_crawl()
+
+    with session_factory() as session:
+        generations = list(
+            session.scalars(select(CatalogGeneration).order_by(CatalogGeneration.id))
+        )
+        runs = list(session.scalars(select(CrawlRun).order_by(CrawlRun.id)))
+        memberships = list(session.scalars(select(GenerationRepository)))
+        repositories = list(session.scalars(select(Repository).order_by(Repository.github_id)))
+
+    assert [(generation.id, generation.status) for generation in generations] == [
+        (summary.generation_id, "active")
+    ]
+    assert [run.generation_id for run in runs] == [summary.generation_id]
+    assert [(membership.generation_id, membership.github_id) for membership in memberships] == [
+        (summary.generation_id, 3)
+    ]
+    assert [repository.github_id for repository in repositories] == [3]
+
+
+def test_generation_created_at_exactly_at_retention_cutoff_is_kept(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with pytest.raises(RuntimeError, match="GitHub is unavailable"):
+        _service(
+            session_factory,
+            FakeRepositorySearcher([RuntimeError("GitHub is unavailable")]),
+            STARTED_AT,
+        ).run_full_crawl()
+
+    summary = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(2))]),
+        STARTED_AT + timedelta(days=7),
+    ).run_full_crawl()
+
+    with session_factory() as session:
+        generations = list(
+            session.scalars(select(CatalogGeneration).order_by(CatalogGeneration.id))
+        )
+
+    assert [(generation.id, generation.status) for generation in generations] == [
+        (1, "failed"),
+        (summary.generation_id, "active"),
+    ]
+
+
 def test_crawl_fetches_every_useful_page_for_a_combination(
     session_factory: sessionmaker[Session],
 ) -> None:

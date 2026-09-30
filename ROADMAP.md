@@ -9,6 +9,8 @@ of the current implementation.
   available. A new staging generation copies active memberships, refreshes each
   repository rediscovered by the crawl, and retires memberships whose `last_seen`
   time exceeds the configured three-day retention window when the crawl publishes.
+  Retired and failed snapshots older than seven days are then removed, along with
+  their orphaned repository metadata.
   Revisit whether that duration should instead be based on successful-crawl counts,
   elapsed time, or both.
 

@@ -7,12 +7,15 @@ def test_database_url_is_required() -> None:
     assert Settings.model_fields["database_url"].is_required()
 
 
-def test_catalog_membership_retention_defaults_to_three_days() -> None:
+def test_catalog_retention_defaults_are_three_days_for_memberships_and_seven_for_generations() -> (
+    None
+):
     settings = Settings.model_validate(
         {"database_url": "postgresql+psycopg://user:pass@localhost:5432/database"}
     )
 
     assert settings.catalog_membership_retention_days == 3
+    assert settings.catalog_generation_retention_days == 7
 
 
 def test_github_app_settings_accept_app_credentials() -> None:

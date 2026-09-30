@@ -36,7 +36,12 @@ substantial amount of time.
 
 The crawler builds a staging catalog. If every request succeeds, it atomically
 makes staging active; if one fails, the prior active catalog remains visible.
-The web application never calls GitHub to satisfy a random-repository request.
+Memberships unseen for three days are removed from the newly published catalog.
+After a successful publish, retired and failed generations created more than
+seven days earlier are deleted, cascading to their crawl runs and memberships;
+repository rows with no remaining generation membership are then deleted too.
+The active and staging generations are never cleanup candidates. The web
+application never calls GitHub to satisfy a random-repository request.
 
 The initial filters are:
 
@@ -75,6 +80,7 @@ GITHUB_RATE_LIMIT_MAX_RETRIES=2
 GITHUB_TRANSPORT_RETRY_SECONDS=60
 GITHUB_TRANSPORT_MAX_RETRIES=2
 CATALOG_MEMBERSHIP_RETENTION_DAYS=3
+CATALOG_GENERATION_RETENTION_DAYS=7
 GITHUB_APP_CLIENT_ID=your-client-id
 GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 # Optional when the App has exactly one installation:
@@ -211,7 +217,9 @@ The only public routes are:
 | `GET /` | Server-rendered repository discovery page. |
 | `GET /api/random-repository` | JSON random repository from the active local catalog. |
 
-The API accepts `language`, `star_bucket`, and `pushed_bucket` IDs. For example:
+The API accepts `language`, `star_bucket`, and `pushed_bucket` IDs. It also
+accepts an optional `exclude_github_id` to prefer a different repository, while
+falling back to that ID if it is the only match. For example:
 
 ~~~powershell
 Invoke-RestMethod "http://127.0.0.1:8000/api/random-repository?language=python&star_bucket=0-100&pushed_bucket=pushed-within-week"

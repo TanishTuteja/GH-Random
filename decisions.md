@@ -168,3 +168,19 @@ database was stamped to that revision, preserving its tables and catalog data;
 new databases create the final schema from the baseline. Future migrations will
 advance from this revision and will not rewrite history.
 
+## 2026-09-30 — Retain non-live catalog history for seven days
+
+The active catalog remains a rolling three-day membership view: a successful
+publication drops memberships not rediscovered during that window. To preserve a
+short operational history and a seven-day window for resuming failed crawls, a
+successful publication deletes only `retired` and `failed` generations created
+more than seven days ago. `active` and `staging` generations are never deletion
+candidates.
+
+Database cascades remove the expired generation's crawl run and membership rows.
+The crawler then deletes canonical repository rows with no membership in any
+remaining generation. This intentionally makes physical repository-metadata
+retention longer than the three-day active-catalog window: metadata remains while
+one of the retained historical snapshots references it. Both windows are runtime
+configuration values, defaulting to three and seven days respectively.
+

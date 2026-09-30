@@ -26,6 +26,7 @@ from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Rep
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
 
 DEFAULT_STALE_MEMBERSHIP_RETENTION = timedelta(days=3)
+DEFAULT_GENERATION_RETENTION = timedelta(days=7)
 
 
 def _utc_now() -> datetime:
@@ -83,9 +84,12 @@ class CrawlService:
         plan_builder: Callable[[datetime], tuple[CrawlSearchWorkItem, ...]] | None = None,
         logger: logging.Logger | None = None,
         stale_membership_retention: timedelta = DEFAULT_STALE_MEMBERSHIP_RETENTION,
+        generation_retention: timedelta = DEFAULT_GENERATION_RETENTION,
     ) -> None:
         if stale_membership_retention <= timedelta():
             raise ValueError("Catalog membership retention must be positive.")
+        if generation_retention <= timedelta():
+            raise ValueError("Catalog generation retention must be positive.")
 
         self._session_factory = session_factory
         self._searcher = searcher
@@ -93,6 +97,7 @@ class CrawlService:
         self._plan_builder = plan_builder or self._default_plan
         self._logger = logger or logging.getLogger(__name__)
         self._stale_membership_retention = stale_membership_retention
+        self._generation_retention = generation_retention
 
     def run_full_crawl(self) -> CrawlSummary:
         """Run all configured queries and publish only if every request succeeds."""
@@ -440,7 +445,8 @@ class CrawlService:
         *,
         completed_at: datetime,
     ) -> CrawlSummary:
-        cutoff = completed_at - self._stale_membership_retention
+        membership_cutoff = completed_at - self._stale_membership_retention
+        generation_cutoff = completed_at - self._generation_retention
 
         with self._session_factory() as session, session.begin():
             crawl_run = session.get(CrawlRun, run_id)
@@ -451,7 +457,7 @@ class CrawlService:
             session.execute(
                 delete(GenerationRepository).where(
                     GenerationRepository.generation_id == generation_id,
-                    GenerationRepository.last_seen_at < cutoff,
+                    GenerationRepository.last_seen_at < membership_cutoff,
                 )
             )
 
@@ -469,6 +475,8 @@ class CrawlService:
             crawl_run.repositories_seen = len(seen_repository_ids)
             session.flush()
 
+            self._prune_expired_catalog_history(session, cutoff=generation_cutoff)
+
             return CrawlSummary(
                 run_id=run_id,
                 generation_id=generation_id,
@@ -476,6 +484,24 @@ class CrawlService:
                 requests_made=crawl_run.requests_made,
                 repositories_seen=crawl_run.repositories_seen,
             )
+
+    @staticmethod
+    def _prune_expired_catalog_history(session: Session, *, cutoff: datetime) -> None:
+        """Remove expired non-live snapshots, then metadata no remaining snapshot references."""
+
+        session.execute(
+            delete(CatalogGeneration).where(
+                CatalogGeneration.status.in_(("retired", "failed")),
+                CatalogGeneration.created_at < cutoff,
+            )
+        )
+        session.execute(
+            delete(Repository).where(
+                ~select(GenerationRepository.github_id)
+                .where(GenerationRepository.github_id == Repository.github_id)
+                .exists()
+            )
+        )
 
     def _fail_crawl(
         self,
