@@ -159,6 +159,71 @@ def test_pushed_time_boundaries_are_inclusive_at_the_newer_end(
     assert one_week_to_month.github_id == 2
 
 
+def test_excludes_currently_displayed_repository_when_an_alternative_exists(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session, session.begin():
+        active = CatalogGeneration(status="active", created_at=NOW, activated_at=NOW)
+        session.add(active)
+        session.flush()
+        session.add_all([_repository(1), _repository(2)])
+        session.flush()
+        session.add_all(
+            [
+                GenerationRepository(
+                    generation_id=active.id,
+                    github_id=1,
+                    last_seen_at=NOW,
+                ),
+                GenerationRepository(
+                    generation_id=active.id,
+                    github_id=2,
+                    last_seen_at=NOW,
+                ),
+            ]
+        )
+
+    with session_factory() as session:
+        repository = find_random_active_repository(
+            session,
+            _selection("pushed-within-week"),
+            now=NOW,
+            exclude_github_id=1,
+        )
+
+    assert repository is not None
+    assert repository.github_id == 2
+
+
+def test_returns_the_current_repository_when_it_is_the_only_match(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session, session.begin():
+        active = CatalogGeneration(status="active", created_at=NOW, activated_at=NOW)
+        session.add(active)
+        session.flush()
+        session.add(_repository(1))
+        session.flush()
+        session.add(
+            GenerationRepository(
+                generation_id=active.id,
+                github_id=1,
+                last_seen_at=NOW,
+            )
+        )
+
+    with session_factory() as session:
+        repository = find_random_active_repository(
+            session,
+            _selection("pushed-within-week"),
+            now=NOW,
+            exclude_github_id=1,
+        )
+
+    assert repository is not None
+    assert repository.github_id == 1
+
+
 def test_any_filters_do_not_limit_the_local_catalog_query(
     session_factory: sessionmaker[Session],
 ) -> None:

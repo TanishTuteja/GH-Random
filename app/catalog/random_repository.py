@@ -54,8 +54,9 @@ def find_random_active_repository(
     selection: RepositoryFilterSelection,
     *,
     now: datetime,
+    exclude_github_id: int | None = None,
 ) -> Repository | None:
-    """Choose one matching repository from the active generation, entirely locally."""
+    """Choose one matching active repository, preferring not to repeat an excluded one."""
 
     if now.tzinfo is None:
         raise ValueError("The repository-selection timestamp must include a timezone.")
@@ -93,6 +94,16 @@ def find_random_active_repository(
         selection.pushed_bucket,
         now=now.astimezone(timezone.utc),
     )
+
+    if exclude_github_id is not None:
+        alternative = session.scalar(
+            statement.where(Repository.github_id != exclude_github_id)
+            .order_by(func.random())
+            .limit(1)
+        )
+        if alternative is not None:
+            return alternative
+
     return session.scalar(statement.order_by(func.random()).limit(1))
 
 

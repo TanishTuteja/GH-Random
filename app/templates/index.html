@@ -6,48 +6,81 @@
     <meta name="description" content="Discover a random GitHub repository.">
     <title>GH Random</title>
     <style>
-      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f6f6f4; color: #242424; }
+      :root { --accent: #3d7050; --accent-soft: #a6d2b3; --content-gutter: clamp(1rem, 3vw, 2rem); --content-width: 73.75rem; color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f6f6f4; color: #242424; }
       * { box-sizing: border-box; }
       body { min-height: 100vh; margin: 0; background: #f6f6f4; }
-      .shell { width: min(100% - 2rem, 42rem); margin: 0 auto; padding: clamp(1.5rem, 4vw, 2.75rem) 0 1.5rem; }
+      .topbar { width: 100%; border-bottom: 1px solid #deded9; background: #fff; }
+      .site-nav, .shell { width: 100%; max-width: var(--content-width); margin: 0 auto; padding-inline: var(--content-gutter); }
+      .site-nav { display: flex; align-items: center; justify-content: space-between; padding-block: .6rem; }
+      .shell { padding-block: 2rem 1.5rem; }
       h1, h2, p { margin-top: 0; }
+      .home-link { color: #242424; font-size: 1.08rem; font-weight: 760; letter-spacing: -.035em; text-decoration: none; }
+      .github-link { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border: 1px solid #d4d4cf; border-radius: .48rem; color: #242424; background: #fff; }
+      .github-link:hover { background: #efefeb; }
+      .github-link svg { width: 1.25rem; height: 1.25rem; }
       h1, h2 { letter-spacing: -.04em; }
-      h1 { margin-bottom: .55rem; font-size: clamp(2rem, 7vw, 3rem); line-height: 1.1; }
+      h1 { margin-bottom: .45rem; font-size: clamp(1.85rem, 3.2vw, 2.55rem); line-height: 1.15; }
       h2 { margin-bottom: .7rem; font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.2; }
-      .hero { margin-bottom: 2rem; }
+      .hero { margin-bottom: 1.8rem; }
       .lede, .description { color: #6a6a67; line-height: 1.55; }
       .lede { margin-bottom: 0; }
       .discovery-panel, .result { border: 1px solid #deded9; border-radius: .75rem; background: #fff; }
-      .discovery-panel { padding: 1.25rem; }
-      .panel-heading { margin-bottom: 1.2rem; }
+      .discovery-panel { padding: 1rem 1.25rem; }
+      .panel-heading { margin-bottom: .85rem; }
       .panel-heading h2 { margin-bottom: .35rem; font-size: 1.1rem; letter-spacing: -.02em; }
       .panel-copy { margin-bottom: 0; color: #777773; font-size: .9rem; line-height: 1.5; }
       .eyebrow { display: none; }
-      .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+      #discovery-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end; }
+      .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
       label { display: grid; gap: .4rem; color: #53534f; font-size: .78rem; font-weight: 650; }
       select, button { width: 100%; border-radius: .45rem; font: inherit; }
       select { min-height: 2.7rem; padding: .55rem .65rem; border: 1px solid #d4d4cf; background: #fff; color: #242424; font-size: .9rem; }
-      select:focus-visible, button:focus-visible, .repository h2 a:focus-visible { outline: 3px solid #a6d2b3; outline-offset: 2px; }
-      button { margin-top: 1rem; padding: .78rem 1rem; border: 1px solid #242424; background: #242424; color: #fff; cursor: pointer; font-weight: 680; }
-      button:hover { background: #3e3e3a; }
+      select:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+      button { margin: 0; padding: .78rem 1rem; border: 1px solid #242424; background: #242424; color: #fff; cursor: pointer; font-weight: 680; white-space: nowrap; }
+      button:hover { background: var(--accent); }
+      button:active { transform: translateY(1px); }
       button:disabled { cursor: progress; opacity: .7; }
       .button-arrow { margin-left: .15rem; }
-      .result { position: relative; min-height: 8rem; margin-top: .85rem; padding: 1.25rem; overflow-anchor: none; }
+      .result { position: relative; min-height: 8rem; margin-top: 1.25rem; padding: 1.25rem 1.5rem 1.15rem; overflow-anchor: none; }
       .result.is-loading::after { content: "Finding a repository…"; position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: rgb(255 255 255 / .92); color: #242424; font-size: .9rem; }
-      .empty { display: grid; place-items: center; color: #777773; text-align: center; }
+      .empty { display: grid; min-height: 5rem; place-items: center; color: #777773; text-align: center; }
       .empty p { max-width: 20rem; margin-bottom: 0; line-height: 1.5; }
-      .error { border-color: #e2bbb5; color: #9c4035; }
-      .repository h2 a { color: #242424; text-decoration-color: #a6d2b3; text-decoration-thickness: .1em; text-underline-offset: .14em; }
-      .metadata { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; margin: 1.35rem 0 1.1rem; }
-      .metadata div { min-width: 0; padding: .65rem; border-radius: .45rem; background: #f6f6f4; }
-      .metadata dt { margin-bottom: .25rem; color: #7b7b76; font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
-      .metadata dd { margin: 0; overflow-wrap: anywhere; color: #353532; font-size: .86rem; font-weight: 650; }
+      .error { min-height: 0; border-color: #e2bbb5; color: #9c4035; }
+      .result-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+      .result-header h2 { min-width: 0; margin-bottom: 0; overflow-wrap: anywhere; }
+      .repository h2 a { color: #242424; text-decoration: none; }
+      .repository h2 a:hover { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-soft); text-decoration-thickness: .07em; text-underline-offset: .14em; }
+      .view-link { flex: 0 0 auto; color: var(--accent); font-size: .86rem; font-weight: 680; text-decoration: none; }
+      .view-link:hover, .feedback a:hover { text-decoration: underline; text-underline-offset: .16em; }
+      .description { max-width: 50rem; margin: .55rem 0 1.25rem; }
+      .primary-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0; }
+      .primary-stats div { min-width: 0; }
+      .primary-stats dt, .activity-meta dt { margin-bottom: .25rem; color: #7b7b76; font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+      .primary-stats dd, .activity-meta dd { margin: 0; overflow-wrap: anywhere; color: #353532; font-size: .9rem; font-weight: 680; }
+      .activity-meta { display: flex; flex-wrap: wrap; gap: .65rem 2rem; margin: .9rem 0; padding-top: .8rem; border-top: 1px solid #edede9; }
+      .activity-meta div { display: flex; align-items: baseline; gap: .45rem; min-width: 0; }
+      .activity-meta dt { margin: 0; font-size: .78rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+      .activity-meta dd { font-size: .84rem; }
       .topics { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; list-style: none; }
       .topics li { padding: .28rem .55rem; border: 1px solid #d7d7d1; border-radius: 999px; color: #555550; font-size: .76rem; }
-      @media (max-width: 36rem) { .filters, .metadata { grid-template-columns: 1fr; } }
+      .topics li:hover { border-color: var(--accent-soft); color: var(--accent); }
+      .topics li.topic-toggle-item { padding: 0; border: 0; }
+      .topic-toggle { width: auto; padding: .28rem .55rem; border: 1px solid var(--accent-soft); border-radius: 999px; background: #fff; color: var(--accent); font-size: .76rem; font-weight: 680; }
+      .topic-toggle:hover { background: #f1f7f2; }
+      .feedback { margin: 1.25rem 0 0; color: #777773; font-size: .8rem; line-height: 1.5; text-align: left; }
+      .feedback a { color: var(--accent); font-weight: 680; }
+      @media (max-width: 42rem) { .site-nav, .shell { padding-inline: 1rem; } #discovery-form { grid-template-columns: 1fr; } .filters { grid-template-columns: 1fr; } button { width: 100%; } .result-header { align-items: flex-start; flex-direction: column; gap: .55rem; } .primary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; } .activity-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem 1rem; } .activity-meta div { min-width: 0; } }
     </style>
   </head>
   <body>
+    <header class="topbar">
+      <nav class="site-nav" aria-label="Site navigation">
+        <a class="home-link" href="/">GH Random</a>
+        <a class="github-link" href="https://github.com/TanishTuteja/GH-Random" target="_blank" rel="noopener noreferrer" aria-label="View GH Random on GitHub">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .7a11.3 11.3 0 0 0-3.57 22.02c.57.1.77-.24.77-.54v-2.1c-3.14.68-3.8-1.33-3.8-1.33-.52-1.31-1.26-1.66-1.26-1.66-1.03-.7.08-.69.08-.69 1.14.08 1.74 1.16 1.74 1.16 1.01 1.72 2.65 1.22 3.3.93.1-.73.4-1.22.72-1.5-2.5-.28-5.13-1.24-5.13-5.56 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.15a10.8 10.8 0 0 1 5.64 0c2.15-1.45 3.09-1.15 3.09-1.15.62 1.55.23 2.7.12 2.98.72.79 1.15 1.8 1.15 3.02 0 4.33-2.64 5.27-5.15 5.55.4.35.76 1.03.76 2.08v3.08c0 .3.2.65.78.54A11.3 11.3 0 0 0 12 .7Z"/></svg>
+        </a>
+      </nav>
+    </header>
     <main class="shell">
       <header class="hero">
         <h1>GitHub Repository Finder</h1>
@@ -87,25 +120,34 @@
               </select>
             </label>
           </div>
-          <button type="submit">Find a repository <span class="button-arrow" aria-hidden="true">→</span></button>
+          <button type="submit">Find repo <span class="button-arrow" aria-hidden="true">→</span></button>
         </form>
       </section>
 
       {% if repository %}
-      <section id="result-panel" class="result repository" aria-live="polite">
-        <h2><a href="{{ repository.html_url }}" target="_blank" rel="noreferrer">{{ repository.full_name }}</a></h2>
+      <section id="result-panel" class="result repository" aria-live="polite" data-repository-id="{{ repository.github_id }}">
+        <div class="result-header">
+          <h2><a href="{{ repository.html_url }}" target="_blank" rel="noopener noreferrer">{{ repository.full_name }}</a></h2>
+          <a class="view-link" href="{{ repository.html_url }}" target="_blank" rel="noopener noreferrer">View on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
         <p class="description">{{ repository.description or "No description was provided." }}</p>
-        <dl class="metadata">
-          <div><dt>Language</dt><dd>{{ repository.language or "Not specified" }}</dd></div>
+        <dl class="primary-stats">
           <div><dt>Stars</dt><dd>{{ "{:,}".format(repository.stargazer_count) }}</dd></div>
           <div><dt>Forks</dt><dd>{{ "{:,}".format(repository.fork_count) }}</dd></div>
           <div><dt>Open issues</dt><dd>{{ "{:,}".format(repository.open_issues_count) }}</dd></div>
-          <div><dt>Last pushed</dt><dd>{% if repository.github_pushed_at %}<time class="local-time" datetime="{{ repository.github_pushed_at.isoformat() }}">{{ repository.github_pushed_at }}</time>{% else %}Not available{% endif %}</dd></div>
-          <div><dt>Updated</dt><dd><time class="local-time" datetime="{{ repository.github_updated_at.isoformat() }}">{{ repository.github_updated_at }}</time></dd></div>
+          <div><dt>Language</dt><dd>{{ repository.language or "—" }}</dd></div>
+        </dl>
+        <dl class="activity-meta">
+          <div><dt>Last pushed</dt><dd>{% if repository.github_pushed_at %}<time class="relative-time local-time" datetime="{{ repository.github_pushed_at.isoformat() }}" title="{{ repository.github_pushed_at.isoformat() }}">{{ repository.github_pushed_at }}</time>{% else %}Not available{% endif %}</dd></div>
+          <div><dt>Updated</dt><dd><time class="relative-time local-time" datetime="{{ repository.github_updated_at.isoformat() }}" title="{{ repository.github_updated_at.isoformat() }}">{{ repository.github_updated_at }}</time></dd></div>
         </dl>
         {% if repository.topics %}
         <ul class="topics">
-          {% for topic in repository.topics %}<li>{{ topic }}</li>{% endfor %}
+          {% for topic in repository.topics[:8] %}<li>{{ topic }}</li>{% endfor %}
+          {% if repository.topics | length > 8 %}
+          {% for topic in repository.topics[8:] %}<li class="extra-topic" hidden>{{ topic }}</li>{% endfor %}
+          <li class="topic-toggle-item"><button class="topic-toggle" type="button" aria-expanded="false">+{{ (repository.topics | length) - 8 }} more</button></li>
+          {% endif %}
         </ul>
         {% endif %}
       </section>
@@ -115,9 +157,10 @@
       </section>
       {% else %}
       <section id="result-panel" class="result empty" aria-live="polite">
-        <p>Pick a few filters, then discover something new.</p>
+        <p>Pick some filters and discover a repository.</p>
       </section>
       {% endif %}
+      <p class="feedback">Found a bug? Have a feature request? Raise an issue <a href="https://github.com/TanishTuteja/GH-Random/issues" target="_blank" rel="noopener noreferrer">here</a>.</p>
     </main>
     <script>
       (() => {
@@ -126,6 +169,7 @@
         if (!form || !resultPanel || !window.fetch) return;
 
         const submitButton = form.querySelector('button[type="submit"]');
+        let currentRepositoryId = resultPanel.dataset.repositoryId || null;
         const numberFormatter = new Intl.NumberFormat();
         const dateFormatter = new Intl.DateTimeFormat(undefined, {
           year: "numeric",
@@ -134,6 +178,11 @@
           hour: "numeric",
           minute: "2-digit",
           timeZoneName: "short",
+        });
+        const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
         });
 
         const element = (tagName, text, className) => {
@@ -145,9 +194,50 @@
 
         const formatDate = (value) => value ? dateFormatter.format(new Date(value)) : "Not available";
 
-        for (const timestamp of document.querySelectorAll("time.local-time")) {
-          timestamp.textContent = formatDate(timestamp.dateTime);
+        const relativeDate = (value) => {
+          const timestamp = new Date(value);
+          const difference = Date.now() - timestamp.getTime();
+          if (Number.isNaN(difference)) return "Not available";
+
+          const future = difference < 0;
+          const ageInMilliseconds = Math.abs(difference);
+          const seconds = Math.floor(ageInMilliseconds / 1_000);
+          const suffix = future ? "from now" : "ago";
+          if (seconds < 60) return future ? "in a moment" : "just now";
+          if (seconds < 3_600) return `${Math.floor(seconds / 60)}m ${suffix}`;
+          if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h ${suffix}`;
+          if (ageInMilliseconds <= 604_800_000) return `${Math.floor(seconds / 86_400)}d ${suffix}`;
+          return shortDateFormatter.format(timestamp);
+        };
+
+        const relativeTime = (value) => {
+          if (!value) return element("span", "Not available");
+          const timestamp = element("time", relativeDate(value), "relative-time local-time");
+          timestamp.dateTime = value;
+          timestamp.title = formatDate(value);
+          return timestamp;
+        };
+
+        for (const timestamp of document.querySelectorAll("time.relative-time")) {
+          timestamp.textContent = relativeDate(timestamp.dateTime);
+          timestamp.title = formatDate(timestamp.dateTime);
         }
+
+        const setupTopicToggle = (topics) => {
+          const toggle = topics.querySelector(".topic-toggle");
+          if (!toggle) return;
+
+          const extraTopics = [...topics.querySelectorAll(".extra-topic")];
+          toggle.addEventListener("click", () => {
+            const expanded = toggle.getAttribute("aria-expanded") === "true";
+            const nextExpanded = !expanded;
+            for (const topic of extraTopics) topic.hidden = !nextExpanded;
+            toggle.setAttribute("aria-expanded", String(nextExpanded));
+            toggle.textContent = nextExpanded ? "Show less" : `+${extraTopics.length} more`;
+          });
+        };
+
+        for (const topics of document.querySelectorAll(".topics")) setupTopicToggle(topics);
 
         const preserveViewport = (update) => {
           const scrollX = window.scrollX;
@@ -162,42 +252,80 @@
 
         const showMessage = (message, kind) => {
           resultPanel.className = `result ${kind}`;
+          delete resultPanel.dataset.repositoryId;
+          currentRepositoryId = null;
           resultPanel.replaceChildren(element("p", message));
         };
 
         const showRepository = (repository) => {
           resultPanel.className = "result repository";
+          resultPanel.dataset.repositoryId = String(repository.github_id);
+          currentRepositoryId = String(repository.github_id);
+          const header = element("div", undefined, "result-header");
           const heading = element("h2");
           const link = element("a", repository.full_name);
           link.href = repository.html_url;
           link.target = "_blank";
           link.rel = "noopener noreferrer";
           heading.append(link);
+          const viewLink = element("a", "View on GitHub ↗", "view-link");
+          viewLink.href = repository.html_url;
+          viewLink.target = "_blank";
+          viewLink.rel = "noopener noreferrer";
+          header.append(heading, viewLink);
 
           const description = element(
             "p",
             repository.description || "No description was provided.",
             "description",
           );
-          const metadata = element("dl", undefined, "metadata");
+          const primaryStats = element("dl", undefined, "primary-stats");
           const fields = [
-            ["Language", repository.language || "Not specified"],
             ["Stars", numberFormatter.format(repository.stargazer_count)],
             ["Forks", numberFormatter.format(repository.fork_count)],
             ["Open issues", numberFormatter.format(repository.open_issues_count)],
-            ["Last pushed", formatDate(repository.github_pushed_at)],
-            ["Updated", formatDate(repository.github_updated_at)],
+            ["Language", repository.language || "—"],
           ];
-          for (const [label, value] of fields) {
-            const item = element("div");
+          for (const [label, value, className] of fields) {
+            const item = element("div", undefined, className);
             item.append(element("dt", label), element("dd", value));
-            metadata.append(item);
+            primaryStats.append(item);
           }
 
-          const children = [heading, description, metadata];
+          const activity = element("dl", undefined, "activity-meta");
+          const activityFields = [
+            ["Last pushed", repository.github_pushed_at],
+            ["Updated", repository.github_updated_at],
+          ];
+          for (const [label, value] of activityFields) {
+            const item = element("div");
+            const valueElement = element("dd");
+            valueElement.append(relativeTime(value));
+            item.append(element("dt", label), valueElement);
+            activity.append(item);
+          }
+
+          const children = [header, description, primaryStats, activity];
           if (repository.topics.length) {
             const topics = element("ul", undefined, "topics");
-            for (const topic of repository.topics) topics.append(element("li", topic));
+            for (const topic of repository.topics.slice(0, 8)) {
+              topics.append(element("li", topic));
+            }
+            const extraTopics = repository.topics.slice(8);
+            if (extraTopics.length) {
+              for (const topic of extraTopics) {
+                const topicItem = element("li", topic, "extra-topic");
+                topicItem.hidden = true;
+                topics.append(topicItem);
+              }
+              const toggleItem = element("li", undefined, "topic-toggle-item");
+              const toggle = element("button", `+${extraTopics.length} more`, "topic-toggle");
+              toggle.type = "button";
+              toggle.setAttribute("aria-expanded", "false");
+              toggleItem.append(toggle);
+              topics.append(toggleItem);
+              setupTopicToggle(topics);
+            }
             children.push(topics);
           }
           resultPanel.replaceChildren(...children);
@@ -207,6 +335,7 @@
           event.preventDefault();
           const parameters = new URLSearchParams(new FormData(form));
           parameters.delete("discover");
+          if (currentRepositoryId) parameters.set("exclude_github_id", currentRepositoryId);
           resultPanel.setAttribute("aria-busy", "true");
           resultPanel.classList.add("is-loading");
           if (submitButton) submitButton.disabled = true;

@@ -109,10 +109,7 @@ def create_app(
                         now=clock(),
                     )
                 if repository is None:
-                    error_message = (
-                        "No active catalog repository matches these filters. "
-                        "Run a successful full crawl, or choose different filters."
-                    )
+                    error_message = "No catalogued repository matches these filters."
 
         return templates.TemplateResponse(
             request=request,
@@ -139,6 +136,7 @@ def create_app(
         language: str = Query(default=LANGUAGE_FILTER_OPTIONS[0].id),
         star_bucket: str = Query(default=STAR_FILTER_OPTIONS[0].id),
         pushed_bucket: str = Query(default=PUSHED_FILTER_OPTIONS[0].id),
+        exclude_github_id: int | None = Query(default=None, ge=1),
     ) -> RandomRepositoryResponse:
         try:
             selection = resolve_filter_selection(
@@ -154,12 +152,13 @@ def create_app(
                 session,
                 selection,
                 now=clock(),
+                exclude_github_id=exclude_github_id,
             )
 
         if repository is None:
             raise HTTPException(
                 status_code=404,
-                detail="No active catalog repository matches these filters.",
+                detail="No catalogued repository matches these filters.",
             )
 
         response.headers["Cache-Control"] = "no-store"
