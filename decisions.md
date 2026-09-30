@@ -83,9 +83,9 @@ retry passes through the five-second request pacer before it starts.
 ## 2026-09-29 — GitHub ID is the only canonical repository identity
 
 The numeric GitHub repository ID is immutable, while an owner/name full name can
-be reused after a transfer, rename, or replacement repository. The initial
-schema incorrectly made full name unique; migration 20260929_03 removes that
-constraint. A generation can briefly retain an old membership for the
+be reused after a transfer, rename, or replacement repository. The catalog
+schema intentionally permits duplicate historical full names. A generation can
+briefly retain an old membership for the
 24-hour stale-retention window even when a distinct repository has since taken
 the same full name.
 
@@ -159,4 +159,12 @@ Production scheduling will start one normal crawl every six hours. Four successf
 runs complete the four-ordering cycle once per day. A failed run does not block the
 following normal crawl: only a `running` crawl prevents another start, and an
 explicit `--resume` remains an operator choice.
+
+## 2026-09-30 — One pre-production migration baseline
+
+The four development-only Alembic revisions were replaced by one
+`20260930_01` baseline migration before the first deployment. The existing local
+database was stamped to that revision, preserving its tables and catalog data;
+new databases create the final schema from the baseline. Future migrations will
+advance from this revision and will not rewrite history.
 

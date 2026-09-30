@@ -232,15 +232,16 @@ internet access; the web application needs only the database.
 
 ## Schema migrations
 
-Alembic records the schema revision applied to each database. A fresh database
-runs every migration in order when `alembic upgrade head` is first executed. A
-later deployment runs only migrations newer than its recorded revision. This
-allows schema changes to preserve existing production data.
+Alembic records the schema revision applied to each database. This repository's
+pre-production schema begins at the single `20260930_01` baseline migration, so
+a fresh database creates the complete catalog schema with one
+`alembic upgrade head` command. A later deployment runs only migrations newer
+than its recorded revision, preserving existing production data.
 
-Before the first production deployment, the development migrations may
-optionally be squashed into one baseline migration once the schema is stable.
-After a database has been deployed, migration history must advance forward and
-should not be rewritten.
+The existing development database was explicitly stamped to that baseline when
+the development-only history was squashed; no catalog data was rebuilt or
+deleted. From the first deployed database onward, migration history must only
+advance forward and must not be rewritten.
 
 ## Verification
 
