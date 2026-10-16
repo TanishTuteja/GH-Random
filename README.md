@@ -255,14 +255,35 @@ advance forward and must not be rewritten.
 
 ~~~powershell
 pytest
-ruff format --check app tests
-ruff check app tests
+ruff format --check app tests alembic
+ruff check app tests alembic
 pyright
 ~~~
 
 The test suite covers query-plan coverage, five-second request pacing,
 GitHub-App authentication behavior, repository mapping, generation publishing,
 failure retention, random filtering, the API, and the rendered start page.
+
+### Continuous integration
+
+[CI](https://github.com/TanishTuteja/GH-Random/actions/workflows/ci.yaml) runs on
+pull requests and pushes to `main`, and can also be started from GitHub's Actions
+tab. It runs two independent jobs on Ubuntu with Python 3.12:
+
+- `Python checks`: Ruff formatting/linting (including Alembic) and Pyright.
+- `PostgreSQL tests`: the complete test suite against a fresh PostgreSQL 17
+  service, followed by `alembic upgrade head` and `alembic check` to verify the
+  baseline creates the schema and matches the models.
+
+CI creates its own virtual environment and uses disposable database credentials.
+It needs no repository secrets, GitHub App key, production database, or real
+GitHub API requests. Both database URLs point to the disposable test database;
+test fixtures recreate its tables. Never point the tests at a database you want
+to keep. The workflow has read-only repository permissions and pins actions to
+commit hashes. Superseded runs for the same PR or branch are cancelled.
+
+When configuring `main` protection, require both `Python checks` and
+`PostgreSQL tests`. Adding the workflow does not itself enable branch protection.
 
 ## Deployment notes
 

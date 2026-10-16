@@ -198,3 +198,17 @@ access for GitHub. Production configuration is split into root-owned files
 outside the checkout. The GitHub App private key is mounted read-only only in
 the crawler service, whose filesystem is read-only and capabilities are dropped.
 
+## 2026-10-16 — CI with disposable PostgreSQL and no production secrets
+
+GitHub Actions runs separate Python quality and PostgreSQL test jobs on Ubuntu
+with Python 3.12, matching the production image's Python version. Each job creates
+the `.venv` expected by Pyright. The database job uses its own PostgreSQL 17
+service and disposable credentials, then checks baseline migration and model
+drift after the test fixtures have removed their tables. No production settings,
+GitHub App credentials, or live GitHub requests are required.
+
+Use ordinary pull-request/push events, read-only repository permissions, pinned
+action commits, and checkout without persisted credentials. Cancel superseded
+CI runs. Keep the job names `Python checks` and `PostgreSQL tests` stable for
+future branch-protection rules; protection itself is a separate setup step.
+

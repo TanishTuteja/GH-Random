@@ -112,8 +112,9 @@ not verified in this review.
 
 ### 7. GitHub Actions and releases
 
-- [ ] Add PR/`main` CI for formatting, Ruff, Pyright, and PostgreSQL-backed tests
+- [x] Add PR/`main` CI for formatting, Ruff, Pyright, and PostgreSQL-backed tests
   using disposable credentials and no production secrets/GitHub App keys.
+  Include fresh-schema migration and Alembic drift checks.
 - [ ] Add container/configuration checks to CI: image build, Compose/Caddy
   validation, and fresh-database migration/web smoke tests.
 - [ ] Add a release workflow for signed semantic-version tags and GitHub
