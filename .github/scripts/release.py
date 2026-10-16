@@ -28,6 +28,7 @@ DEPLOYMENT_FILES = (
     "deployment/app.env.example",
     "deployment/crawler.env.example",
     "deployment/caddy.env.example",
+    "deployment/database_backup.py",
     "README.md",
     "LICENSE",
 )

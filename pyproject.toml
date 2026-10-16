@@ -67,7 +67,7 @@ line-length = 100
 select = ["E", "F", "I"]
 
 [tool.pyright]
-include = ["app", "tests", ".github/scripts"]
+include = ["app", "tests", ".github/scripts", "deployment"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"

@@ -92,13 +92,22 @@ GitHub settings remain pending unless explicitly marked complete.
 
 ### 6. Backups, alerts, and operations
 
-- [ ] Add PostgreSQL backup/restore scripts and scheduling. Define frequency,
-  retention, acceptable data loss, and restore time. Use a consistent PostgreSQL
-  backup rather than copying a live data directory.
+- [x] Add host-side PostgreSQL backup/restore tooling using container client
+  tools: consistent custom-format dumps, private/atomic files, checksums,
+  explicit new-database-only restores, and no live database drops/overwrites.
+  Ship the tool with matching release deployment files.
+- [x] Rehearse backup/restore against a disposable production stack in native
+  ARM64 CI: verify schema/catalog counts, restored app/API discovery, source
+  preservation, and corrupt-archive/existing-target refusal. This is not a
+  production/off-site recovery rehearsal.
+- [ ] Add backup scheduling and retention. Define frequency, acceptable data
+  loss, and restore time; do not prune the only usable recovery copy. Local
+  snapshots are currently unencrypted and no timer is installed.
 - [ ] Upload encrypted backups to OCI Object Storage with scoped permissions and
   lifecycle rules. Keep recovery material accessible if the VM is lost.
-- [ ] Restore a backup into a separate database and verify schema, catalog counts,
-  and random discovery before relying on the backup procedure.
+- [ ] Restore an encrypted off-site production backup into a separate database
+  and verify schema, catalog counts, and discovery, including VM-loss recovery,
+  before relying on the complete backup procedure.
 - [ ] Choose email/webhook alerts for crawler, backup, and deployment failures.
   Include run/deployment identifiers and useful logs without secrets; test
   delivery and prevent alert loops.

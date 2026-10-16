@@ -321,3 +321,37 @@ production deployment/rollback automation, and live first-release verification
 remain separate checklist items; checksums are not cryptographic publisher
 attestations of the release archive.
 
+## 2026-10-17 — Safe local backup/restore before deployment automation
+
+Add a standard-library Python host tool rather than requiring a second host
+virtualenv or PostgreSQL client installation. Resolve exactly one running
+database container from explicit Compose configuration/project, then use its
+matching PostgreSQL tools over the local socket. Expand credentials only inside
+that container; never log passwords, raw restore SQL, or archive contents.
+
+Stream a compressed custom-format consistent pg_dump snapshot into a private
+partial directory. Check the archive, sync its bytes and checksum manifest,
+then rename atomically to mark completion. Enforce private ownership/modes on
+Linux; Windows ACLs remain the operator's responsibility. Keep partials on failure
+for explicit inspection, and never automatically prune backup data. Do not
+claim an independently queried live row count describes the dump's MVCC snapshot.
+
+Restores require acknowledgement of a trusted source and a new, explicitly named
+`gh_random_restore_*` database, never the live DB or an existing target. Validate
+checksum/format/version before creation, restore in one transaction without
+clean/drop/ownership/grant replay, then report schema/catalog counts. Leave the
+new database for inspection even on failure. This is deliberately not an
+automated production switch, database deletion tool, or cross-major upgrade.
+
+Include the tool in release archives and extend production-container CI to
+dump the disposable catalog, restore it separately, verify the actual app/API
+against the copy, and reject existing targets/corrupt backups without damaging
+the source. Ignore real environment files and database dumps in Git/build context.
+
+Scope this PR to local primitives and their rehearsal. Local snapshots are not
+encrypted and cannot survive VM loss. Backup scheduling/retention, encryption
+and Object Storage, alerting, RPO/RTO decisions, interrupted-crawl recovery, and
+production restoration/promotion remain explicit open deployment items. No live
+database was backed up/restored, no timer installed, and no OCI service configured
+while implementing/testing this change.
+
