@@ -285,6 +285,20 @@ commit hashes. Superseded runs for the same PR or branch are cancelled.
 When configuring `main` protection, require both `Python checks` and
 `PostgreSQL tests`. Adding the workflow does not itself enable branch protection.
 
+### Change workflow
+
+Use a short-lived feature branch from the latest `main` for each change,
+including documentation and maintenance. Push signed commits with descriptive
+bodies and open a pull request targeting `main`. Both CI jobs must pass before
+merge; leave changes ready for review and merge with the maintainer's approval.
+Delete the feature branch after merging. Do not push directly to `main` or
+maintain a permanent `dev` branch.
+
+UI changes also need the maintainer's manual verification before committing,
+pushing, or marking their TODO complete. Merging code does not deploy it;
+production releases use signed version tags and immutable image digests.
+See `AGENTS.md` for repository instructions followed by coding agents.
+
 ## Deployment notes
 
 See [TODO.md](TODO.md) for completed work, remaining deployment setup, and the
