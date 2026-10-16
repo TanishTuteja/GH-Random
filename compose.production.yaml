@@ -1,0 +1,101 @@
+name: gh-random
+
+x-app-service: &app-service
+  image: ${GH_RANDOM_IMAGE:?Set GH_RANDOM_IMAGE to the released image digest.}
+  init: true
+  depends_on:
+    database:
+      condition: service_healthy
+
+services:
+  database:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    env_file:
+      - ${GH_RANDOM_POSTGRES_ENV_FILE:?Set GH_RANDOM_POSTGRES_ENV_FILE to an absolute path.}
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  migrate:
+    <<: *app-service
+    profiles: ["migrate"]
+    env_file:
+      - ${GH_RANDOM_APP_ENV_FILE:?Set GH_RANDOM_APP_ENV_FILE to an absolute path.}
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - backend
+
+  web:
+    <<: *app-service
+    env_file:
+      - ${GH_RANDOM_APP_ENV_FILE:?Set GH_RANDOM_APP_ENV_FILE to an absolute path.}
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    networks:
+      - edge
+      - backend
+
+  crawler:
+    image: ${GH_RANDOM_IMAGE:?Set GH_RANDOM_IMAGE to the released image digest.}
+    profiles: ["crawler"]
+    env_file:
+      - ${GH_RANDOM_CRAWLER_ENV_FILE:?Set GH_RANDOM_CRAWLER_ENV_FILE to an absolute path.}
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${GITHUB_APP_PRIVATE_KEY_HOST_PATH:?Set GITHUB_APP_PRIVATE_KEY_HOST_PATH to an absolute path.}
+        target: /run/secrets/github-app-private-key.pem
+        read_only: true
+    command: ["python", "-m", "app.cli", "crawl"]
+    networks:
+      - backend
+      - crawler_egress
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.10-alpine}
+    env_file:
+      - ${GH_RANDOM_CADDY_ENV_FILE:?Set GH_RANDOM_CADDY_ENV_FILE to an absolute path.}
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  backend:
+    internal: true
+  crawler_egress:

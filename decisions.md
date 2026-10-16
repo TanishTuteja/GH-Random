@@ -184,3 +184,17 @@ retention longer than the three-day active-catalog window: metadata remains whil
 one of the retained historical snapshots references it. Both windows are runtime
 configuration values, defaulting to three and seven days respectively.
 
+## 2026-10-16 — One production image, isolated runtime roles
+
+Production will use one immutable application image for FastAPI, Alembic, and
+the crawler. Compose runs the web server continuously, but migrations and
+crawls are explicit one-shot services. This keeps the deployed application code
+identical in every role while preventing a container start or restart from
+silently launching a crawler.
+
+Only Caddy publishes host ports. PostgreSQL, the web server, and migrations use
+an internal network; the crawler alone additionally receives outbound network
+access for GitHub. Production configuration is split into root-owned files
+outside the checkout. The GitHub App private key is mounted read-only only in
+the crawler service, whose filesystem is read-only and capabilities are dropped.
+

@@ -270,3 +270,43 @@ Run the same migrations against the deployment database, provide all settings
 as environment variables or deployment secrets, and run the crawler separately
 from the web server. A crawler failure is safe for users because it cannot
 replace the existing active catalog.
+
+### Production container artifacts
+
+The repository includes a production `Dockerfile`, `compose.production.yaml`,
+and `Caddyfile`. They define one image used in three roles: the FastAPI web
+server, a one-shot Alembic migration command, and a one-shot crawler command.
+Production PostgreSQL, FastAPI, and the migration command share an internal
+Docker network. Caddy is the only service with host ports, on HTTP/HTTPS. The
+crawler additionally joins a separate outbound network so it can contact GitHub.
+pgAdmin is deliberately absent from this stack.
+
+The production Compose file expects root-owned configuration files outside the
+repository. The tracked `deployment/*.example` files document their contents;
+copy them to `/etc/gh-random/`, replace every placeholder, and restrict their
+permissions before first use. Keep the GitHub App private-key PEM at
+`/etc/gh-random/github-app-private-key.pem` with mode `0600`. It is bind-mounted
+read-only only into the crawler, which has a read-only filesystem, no Linux
+capabilities, and no-new-privileges enabled. The web and migration containers
+never receive that key.
+
+The `compose.env` file supplies Compose-level values, including the released
+application image by immutable digest and absolute paths to the role-specific
+environment files. The application and crawler use `database`, the Compose
+service name, as the PostgreSQL hostname in `DATABASE_URL`, not `127.0.0.1`.
+
+From a checked-out release directory on the VM, the manual first-deployment
+sequence will be:
+
+~~~sh
+docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml pull
+docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml --profile migrate run --rm migrate
+docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml up --detach database web caddy
+docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml --profile crawler run --rm crawler
+~~~
+
+Run the initial crawler to completion before announcing the site, then replace
+the final manual crawler command with the planned six-hour systemd timer. A
+future deployment script will automate the pull, backup, migration, restart,
+and smoke-test steps; do not treat the commands above as a substitute for a
+tested backup and restore procedure.
