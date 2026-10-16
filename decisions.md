@@ -212,3 +212,18 @@ action commits, and checkout without persisted credentials. Cancel superseded
 CI runs. Keep the job names `Python checks` and `PostgreSQL tests` stable for
 future branch-protection rules; protection itself is a separate setup step.
 
+## 2026-10-16 — Feature branches and pull requests for every change
+
+The repository is now public. Use short-lived feature branches from `main` for
+all future changes, including documentation and maintenance; do not add a
+permanent `dev` branch or push directly to `main`. Keep commits SSH-signed with
+descriptive bodies, require successful CI, and leave PRs ready for the user's
+review and authorization to merge. Preserve the existing requirement for manual
+UI verification before committing/pushing UI changes or completing their TODOs.
+
+These instructions live in `AGENTS.md` and the README so future sessions and
+contributors follow the same workflow. At the time of this decision, GitHub
+reported `main` unprotected and no repository rulesets; configuring protection
+is the next step. Production deployment remains tied to a released version and
+image digest, separately from merging to `main`.
+

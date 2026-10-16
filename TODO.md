@@ -140,8 +140,11 @@ not verified in this review.
 
 - [x] Keep the project README and license, including local setup and production
   configuration documentation.
+- [x] Adopt feature branches and pull requests for all changes, with no permanent
+  `dev` branch. Record the workflow in `AGENTS.md` and the README; branch
+  protection still needs to enforce it on GitHub.
 - [x] Create SSH-signed commits. Local signature verification still needs
-  `gpg.ssh.allowedSignersFile`; confirm GitHub's verification status.
+  `gpg.ssh.allowedSignersFile`; GitHub verified the CI commit's signature.
 - [ ] Protect `main`: require PRs, passing CI, and resolved conversations; block
   direct/force pushes and deletion. Decide review and administrator-bypass rules
   suitable for a solo maintainer before enabling.
