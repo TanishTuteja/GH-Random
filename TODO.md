@@ -117,8 +117,10 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Add PR/`main` CI for formatting, Ruff, Pyright, and PostgreSQL-backed tests
   using disposable credentials and no production secrets/GitHub App keys.
   Include fresh-schema migration and Alembic drift checks.
-- [ ] Add container/configuration checks to CI: image build, Compose/Caddy
-  validation, and fresh-database migration/web smoke tests.
+- [x] Add native ARM64 container/configuration checks to CI: image build,
+  production Compose/HTTPS Caddy validation, fresh-database migration/drift,
+  hardened crawler status, and proxied web/API smoke tests. Use isolated test
+  resources and automatic cleanup; require the `Production containers` check.
 - [ ] Add a release workflow for signed semantic-version tags and GitHub
   Releases, starting with `v0.1.0`. Verify the source and passing checks, build
   ARM64 (optionally AMD64 too), and publish to GHCR using `GITHUB_TOKEN`.
@@ -148,7 +150,8 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Create SSH-signed commits. Local signature verification still needs
   `gpg.ssh.allowedSignersFile`; GitHub verified the CI commit's signature.
 - [x] Protect `main` with the active `Protect main` ruleset: require PRs, resolved
-  conversations, and `Python checks` / `PostgreSQL tests` from GitHub Actions.
+  conversations, and `Python checks`, `PostgreSQL tests`, and `Production
+  containers` from GitHub Actions.
   Require branches to be up to date before merging; block force pushes and
   deletion. Require zero reviewer approvals for the solo-maintainer workflow,
   with an empty bypass list so administrators follow the same rules.

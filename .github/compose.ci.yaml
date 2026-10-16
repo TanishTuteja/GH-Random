@@ -1,0 +1,10 @@
+# Overlay for disposable smoke tests only. Production keeps its normal ports
+# and HTTPS configuration when this file is not supplied.
+services:
+  web:
+    environment:
+      GH_RANDOM_CONTAINER_SMOKE: "1"
+  caddy:
+    ports: !reset []
+    environment:
+      GH_RANDOM_DOMAIN: http://localhost

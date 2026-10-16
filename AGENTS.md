@@ -9,8 +9,9 @@
 - Do not commit or push changes directly to `main`. Keep commits focused, sign
   them with the configured SSH signing key, and include a descriptive commit body.
 - Push the feature branch and open a pull request targeting `main`. Run checks
-  appropriate to the change and verify that both required CI jobs, `Python
-  checks` and `PostgreSQL tests`, pass on the PR before considering it ready.
+  appropriate to the change and verify that all required CI jobs, `Python
+  checks`, `PostgreSQL tests`, and `Production containers`, pass on the PR
+  before considering it ready.
 - Leave the PR ready for user review. Merge only when the user authorizes it;
   delete the feature branch after an authorized successful merge. Do not bypass
   failing checks or repository protection rules.
