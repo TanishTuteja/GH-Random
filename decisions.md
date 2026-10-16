@@ -227,3 +227,20 @@ reported `main` unprotected and no repository rulesets; configuring protection
 is the next step. Production deployment remains tied to a released version and
 image digest, separately from merging to `main`.
 
+## 2026-10-17 — Enforce main protection without mandatory second-person approval
+
+The user merged PR #1 after both CI jobs passed and deleted its remote branch.
+The merge is valid; the local checkout was fast-forwarded to the merged main
+revision, and the merged local feature branch was removed.
+
+Created the active `Protect main` branch ruleset (ID `25266382`) targeting the
+default branch, currently `main`. It requires a PR, resolved review conversations,
+and successful `Python checks` and `PostgreSQL tests` from GitHub Actions, with
+the branch up to date before merging. Deletion and force pushes are blocked.
+The bypass list is empty, including for administrators. Required reviewer
+approvals are zero so a solo maintainer can merge their own passing PR; agent
+instructions still require the user's authorization before an agent merges.
+
+Verified the saved ruleset using GitHub's API and confirmed that `main` reports
+`protected: true`. This changes repository settings, not deployment behavior.
+

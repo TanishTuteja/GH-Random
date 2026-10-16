@@ -282,8 +282,11 @@ test fixtures recreate its tables. Never point the tests at a database you want
 to keep. The workflow has read-only repository permissions and pins actions to
 commit hashes. Superseded runs for the same PR or branch are cancelled.
 
-When configuring `main` protection, require both `Python checks` and
-`PostgreSQL tests`. Adding the workflow does not itself enable branch protection.
+The active `Protect main` ruleset requires both `Python checks` and
+`PostgreSQL tests` from GitHub Actions and an up-to-date branch before merging.
+It requires pull requests and resolved conversations, blocks force pushes and
+branch deletion, and has no bypass actors. Zero mandatory reviewer approvals
+allows the solo maintainer to merge their own PR after CI passes.
 
 ### Change workflow
 
