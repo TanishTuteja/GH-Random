@@ -266,6 +266,9 @@ failure retention, random filtering, the API, and the rendered start page.
 
 ## Deployment notes
 
+See [TODO.md](TODO.md) for completed work, remaining deployment setup, and the
+first-release acceptance checklist.
+
 Run the same migrations against the deployment database, provide all settings
 as environment variables or deployment secrets, and run the crawler separately
 from the web server. A crawler failure is safe for users because it cannot

@@ -32,21 +32,6 @@ of the current implementation.
 
 ## Open-source repository operations
 
-- Add GitHub Actions continuous integration for pull requests and `main`:
-  formatting verification, Ruff linting, Pyright, and the PostgreSQL-backed test
-  suite. Make the resulting CI check a required merge status check.
-- Configure a GitHub ruleset or branch-protection rule for `main` (this
-  repository's default branch): require pull requests, required CI, and resolved
-  review conversations; prevent direct pushes, force pushes, and deletion. Decide
-  whether to require an approving review and whether administrators may bypass
-  the rules before enabling it.
-- Add Dependabot version updates for Python dependencies and GitHub Actions, and
-  enable GitHub's dependency alerts and security updates. Review update cadence
-  and pull-request limits to keep maintenance work manageable.
-- Add contributor-facing repository files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-  `SECURITY.md`, issue forms/templates, a pull-request template, and maintainers'
-  labels. The repository already has a license; document its contribution and
-  vulnerability-reporting expectations alongside it.
-- Establish safe workflow defaults: least-privilege `GITHUB_TOKEN` permissions,
-  pinned third-party action revisions, and no untrusted pull-request content in
-  privileged workflow events.
+CI, branch/tag protection, Dependabot, contributor files, and workflow security
+are tracked with their completion status in [TODO.md](TODO.md). Keep that
+deployment checklist as the single source of status for repository operations.

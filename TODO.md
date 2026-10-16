@@ -1,71 +1,216 @@
-# TODO
+# Deployment checklist — Oracle Cloud Always Free
 
-## Deployment — Oracle Cloud Always Free
+Reviewed against the repository on 2026-10-16. `[x]` means implemented and
+locally verified; `[ ]` means work remains. Local checks do not establish that
+something works in production. OCI resources and GitHub account settings were
+not verified in this review.
 
-### Infrastructure and network
+## Repository implementation
 
-- Create the OCI tenancy, choose its home region carefully, and provision an
-  Always Free Arm VM with persistent block storage. Record the recovery procedure
-  because OCI may reclaim an idle Always Free instance.
-- Configure the VM's VCN, security list/network security group, and host firewall
-  to expose only HTTP/HTTPS (ports 80/443). Do not expose PostgreSQL (5432),
-  pgAdmin (5050), or public SSH (22).
-- Add Caddy as the public reverse proxy and obtain a hostname. OCI supplies an IP
-  address and DNS hosting, not a free registered domain; begin with a free
-  subdomain or acquire a domain before the final public launch. Use HTTPS via
-  Let's Encrypt.
-- Configure OCI Bastion for time-limited administrator access. Use separate,
-  passphrase-protected SSH keys; disable password and root login on the VM; limit
-  Bastion client CIDRs where practical; and enable MFA on the OCI account.
-- Configure encrypted, tested PostgreSQL backups to OCI Object Storage and define
-  restoration steps. Never include the database volume in routine application
-  container replacement.
+### 1. Production image
 
-### Production containers and secrets
+- [x] Add `Dockerfile` for web, crawler, and migrations. Build and run AMD64 and
+  ARM64 images locally. The image defaults to non-root; Compose overrides the
+  crawler to root to read its root-owned key, with capabilities dropped and a
+  read-only filesystem.
+- [x] Add `.dockerignore`; package application code and migrations without
+  copying local secrets, keys, or development files.
+- [ ] Make dependencies repeatable with a committed lock or equivalent pinned
+  dependency set. Currently each build resolves `pyproject.toml` version ranges.
+- [ ] Pin reviewed Python, PostgreSQL, and Caddy images to immutable digests and
+  document how updates will be reviewed.
 
-- Add a production Dockerfile that builds an ARM64 image (or a multi-architecture
-  image) for both the FastAPI server and crawler commands.
-- Add a production Compose definition: Caddy, FastAPI, PostgreSQL, a one-off
-  Alembic migration command, and a profile/one-shot crawler command. Keep the
-  database on Docker's private network and omit pgAdmin from the default stack.
-- Store production configuration in root-owned files outside the repository. Keep
-  the PostgreSQL password, database URL, and GitHub App private key out of images,
-  Git history, and CI logs. Mount the private key read-only only for the crawler.
-- Make pgAdmin an on-demand administrative container bound to `127.0.0.1` on the
-  VM. Access it only through an OCI Bastion SSH tunnel, then stop it after use.
+### 2. Production Compose and configuration
 
-### Release and deployment pipeline
+- [x] Add `compose.production.yaml`: PostgreSQL, FastAPI, Caddy, and explicit
+  one-shot migration/crawler profiles. Only Caddy publishes host ports; the
+  database uses a persistent named volume and internal network.
+- [x] Keep migration/crawl startup explicit and share the application image
+  setting across roles. Restarting web does not start a crawl.
+- [x] Add role-specific `deployment/*.env.example` templates. Mount the private
+  key read-only only into the crawler. Actual VM secrets still need setup.
+- [x] Smoke-test an empty disposable production database, baseline migration,
+  and packaged web response (HTTP 200); remove that test stack.
+- [ ] Add optional production pgAdmin bound to `127.0.0.1`, reached through a
+  Bastion tunnel and stopped after use. Development pgAdmin already exists;
+  production pgAdmin need not block launch.
 
-- Add PR and `main` CI workflows for formatting, Ruff, Pyright, and the
-  PostgreSQL-backed test suite. Protect `main` with required CI and pull requests
-  before relying on production automation.
-- Adopt signed semantic-version tags and GitHub Releases, beginning with
-  `v0.1.0`. A release must build and publish an immutable ARM64 image to GHCR;
-  deploy the image digest, not a mutable `latest` tag.
-- Add a GitHub `production` environment and deployment workflow. It should record
-  deployment status and URL, require the intended approval rules, and deploy via
-  a short-lived OCI Bastion connection or another pull-based mechanism—not an
-  internet-exposed SSH service.
-- Have the deploy script back up PostgreSQL, pull the exact image digest, run
-  `alembic upgrade head` exactly once, update the web container, smoke-test `/`,
-  and report success or failure. Define rollback as redeploying the prior image;
-  do not automatically downgrade database migrations.
-- Pin the crawler to the same deployed image digest as the web application. The
-  scheduled crawler must not implicitly run unreleased code from `main`.
+### 3. HTTPS and reverse proxy
 
-### Crawling, monitoring, and operations
+- [x] Add and validate `Caddyfile` for HTTPS, reverse proxying, compression, and
+  basic response headers.
+- [ ] Verify live DNS, certificate issuance/renewal, HTTP-to-HTTPS redirects, and
+  the real hostname on the VM; these were not covered by local validation.
+- [ ] Verify trusted proxy/forwarded-header handling and host validation behind
+  Caddy so scheme, client IP, and host handling match production.
 
-- Install a persistent systemd timer that starts one normal full crawl every six
-  hours (four runs per day, so each successful sort ordering completes once per
-  day). It should run `python -m app.cli crawl`, not `--resume`, and must prevent
-  overlapping operating-system invocations.
-- Preserve the existing behavior that a failed run leaves the active catalog
-  untouched and does not block the following six-hourly normal crawl. An operator
-  may explicitly run `--resume` between scheduled runs when appropriate.
-- Configure alerts for crawler and deployment failures. Alert from a systemd
-  failure handler and/or OCI Monitoring after a non-zero crawl exit, include the
-  relevant journal log and `crawl_runs` identifier, and send to an email or webhook
-  destination. Avoid alert loops and test one intentional failure before launch.
-- Send service logs to journald with rotation, document `journalctl` and the local
-  `python -m app.cli status` operator commands, and monitor database disk use,
-  backup failures, the three-day rolling catalog, and seven-day snapshot retention.
+### 4. Deployment and migrations
+
+- [x] Document manual first-deployment commands in `README.md`.
+- [x] Squash pre-production migrations into one baseline. Preserve migration
+  history from the first production deployment onward.
+- [ ] Add a repeatable deploy script: validate configuration, acquire a lock,
+  back up PostgreSQL, pull the exact image digest, run `alembic upgrade head`
+  once, update web, smoke-test `/`, and report the result.
+- [ ] Coordinate deployments with crawls: wait for an existing run or fail
+  clearly, block new runs during deployment, and restore scheduling even on
+  deployment failure. Avoid changing schema underneath a running crawler.
+- [ ] Deploy Compose, Caddy, scripts, and systemd files from the same release
+  revision as the image. Record version, commit, digest, and prior digest;
+  never combine a release image with deployment files taken from moving `main`.
+- [ ] Define and rehearse rollback to the previous image. Never automatically
+  downgrade migrations; incompatible schema changes need a recovery plan.
+  Preserve database volumes during normal redeployment.
+- [ ] Test scripted deployment, migration failure, and rollback using disposable
+  data before applying them to production.
+
+### 5. Scheduled crawler and crash recovery
+
+- [x] Implement 200 language/star/pushed-time combinations, five-second pacing,
+  and rotation across four sort orders after successful crawls.
+- [x] Preserve the active catalog on a normally handled crawl failure and allow
+  the next normal crawl. Support explicit `--resume` with durable checkpoints.
+- [x] Implement three-day membership retention and cleanup of retired/failed
+  generations older than seven days after successful publication, including
+  orphaned repository metadata.
+- [ ] Add/install a systemd service and persistent six-hour timer for a normal
+  full crawl, without `--resume`, using the deployed digest. Document timezone
+  and behavior after missed runs.
+- [ ] Add shared overlap protection for manual/scheduled crawls and deployments.
+  Checking for a running database row is not a complete atomic locking mechanism.
+- [ ] Recover after a killed process, host reboot, or DB outage during failure
+  recording. A leftover `running` row currently blocks later crawls; establish
+  process ownership/locking and safely mark abandoned runs failed. Elapsed time
+  alone must not cause a live crawler to be declared abandoned.
+- [ ] Ensure stopping the systemd unit also stops its Docker crawler; define
+  maximum runtime and hung-run alerts. Verify interruptions cannot permanently
+  block subsequent scheduled runs.
+- [ ] Smoke-test real GitHub App authentication from the hardened ARM64 crawler
+  container, including root-owned key access and outbound network connectivity.
+
+### 6. Backups, alerts, and operations
+
+- [ ] Add PostgreSQL backup/restore scripts and scheduling. Define frequency,
+  retention, acceptable data loss, and restore time. Use a consistent PostgreSQL
+  backup rather than copying a live data directory.
+- [ ] Upload encrypted backups to OCI Object Storage with scoped permissions and
+  lifecycle rules. Keep recovery material accessible if the VM is lost.
+- [ ] Restore a backup into a separate database and verify schema, catalog counts,
+  and random discovery before relying on the backup procedure.
+- [ ] Choose email/webhook alerts for crawler, backup, and deployment failures.
+  Include run/deployment identifiers and useful logs without secrets; test
+  delivery and prevent alert loops.
+- [ ] Add monitoring outside the VM for site downtime and missing successful
+  crawls/backups. An on-host failure handler cannot alert while its VM is down.
+- [ ] Bound Docker and journald logs; document container logs, `journalctl`, and
+  `python -m app.cli status`. Monitor disk use, backup age, last successful
+  crawl, and TLS expiry/renewal failures.
+- [ ] Document recovery from stuck crawls, failed migrations, full disks, revoked
+  GitHub credentials, and complete VM loss/replacement.
+- [ ] Define host updates/reboots, secret rotation, image cleanup, and resource
+  limits suitable for the VM. Preserve persistent data and rollback images.
+
+### 7. GitHub Actions and releases
+
+- [ ] Add PR/`main` CI for formatting, Ruff, Pyright, and PostgreSQL-backed tests
+  using disposable credentials and no production secrets/GitHub App keys.
+- [ ] Add container/configuration checks to CI: image build, Compose/Caddy
+  validation, and fresh-database migration/web smoke tests.
+- [ ] Add a release workflow for signed semantic-version tags and GitHub
+  Releases, starting with `v0.1.0`. Verify the source and passing checks, build
+  ARM64 (optionally AMD64 too), and publish to GHCR using `GITHUB_TOKEN`.
+- [ ] Publish the digest and matching deployment files with release metadata;
+  include source/version image labels and document release/rollback commands.
+  Consider build provenance and a dependency inventory.
+- [ ] Choose GHCR package visibility. Prefer public pulls for this open-source
+  project; if private, give the VM only the required pull access. Never copy
+  the temporary Actions `GITHUB_TOKEN` onto the VM.
+- [ ] Add a production deployment workflow and GitHub `production` environment.
+  Record version/digest, status, and URL; set intended branch/approval controls
+  after confirming availability for the repository/account plan.
+- [ ] Implement automation access through short-lived OCI Bastion sessions or a
+  VM-side pull mechanism, with scoped, rotatable credentials and no public SSH.
+- [ ] Serialize deployments and avoid cancellation during migrations; report
+  failures accurately and retain the previous release.
+- [ ] Use least-privilege workflow permissions and pinned third-party action
+  revisions; keep untrusted PR content away from privileged events and secrets.
+
+### 8. Repository administration and contributor basics
+
+- [x] Keep the project README and license, including local setup and production
+  configuration documentation.
+- [x] Create SSH-signed commits. Local signature verification still needs
+  `gpg.ssh.allowedSignersFile`; confirm GitHub's verification status.
+- [ ] Protect `main`: require PRs, passing CI, and resolved conversations; block
+  direct/force pushes and deletion. Decide review and administrator-bypass rules
+  suitable for a solo maintainer before enabling.
+- [ ] Protect release tags from accidental changes/deletion and document signed
+  tag creation and verification.
+- [ ] Add Dependabot for Python, GitHub Actions, and Docker base images; enable
+  dependency alerts/security updates and choose a manageable update cadence.
+- [ ] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue forms,
+  a PR template, and useful labels. Confirm the private vulnerability reporting
+  channel/contact before publishing the security policy.
+
+## Infrastructure and account setup
+
+All items require setup or confirmation. Repository files alone cannot establish
+that OCI resources or GitHub account settings exist.
+
+- [ ] Create/verify OCI tenancy and MFA, choose the home region, and confirm
+  current Always Free quotas, ARM availability, storage, and network costs.
+  Use eligible resources and quotas/budget notifications for the zero-cost
+  requirement; budget alerts alone do not cap spending.
+- [ ] Provision the ARM VM with persistent storage; install Docker Engine,
+  Compose, and host tools. Document boot/data volume preservation, automatic
+  startup, and recovery after idle-instance reclamation.
+- [ ] Reserve/record the public IP, choose a hostname, and configure DNS. Use a
+  free subdomain or separately acquired domain; OCI is not a free registrar.
+  Publish IPv6 DNS only after testing IPv6 networking/firewall rules too.
+- [ ] Configure OCI VCN/security groups and host firewall: public TCP 80/443 and,
+  if using Caddy HTTP/3, UDP 443. Keep PostgreSQL, pgAdmin, Docker API, and public
+  SSH closed. Test externally; Docker-published ports can bypass UFW rules.
+- [ ] Configure Bastion access and required private SSH rules/agent/session
+  prerequisites. Use passphrase-protected admin keys, disable password/root SSH
+  login, and restrict client CIDRs. Verify access before closing bootstrap access.
+- [ ] Create root-owned production configuration/key files outside the repo,
+  replace placeholders, and check permissions and matching DB credentials.
+  URL-encode reserved password characters in the SQLAlchemy database URL.
+- [ ] Configure Object Storage, restricted backup identity, encryption/recovery
+  access, lifecycle rules, and alert destination within free quotas.
+- [ ] Configure GitHub branch/tag rules, Actions/package permissions, production
+  environment, and deployment credentials once workflows exist.
+
+## First-release acceptance sequence
+
+- [ ] Finish CI/protection and merge the release candidate to `main`.
+- [ ] Rehearse deployment, restore, and rollback with disposable data.
+- [ ] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
+  the expected ARM64 image and immutable digest.
+- [ ] Deploy that digest and matching files, back up as appropriate, migrate
+  once, and start PostgreSQL/web/Caddy. Record the deployment in GitHub's
+  `production` environment as part of the deployment workflow.
+- [ ] Complete the first full crawl and confirm an active catalog before launch.
+  Verify filters, Any, single-result fallback, immediate repetition avoidance,
+  and no-result behavior through the public page/API.
+- [ ] Verify DNS/HTTPS, intended public routes/ports, six-hour scheduling and
+  sort rotation, failed/interrupted-run recovery, restored backups, alert delivery,
+  and recovery after a host reboot.
+- [ ] Record operator commands, URL, current version/digest, recovery instructions,
+  and remaining optional improvements in the README.
+
+## Implementation order
+
+CI -> main protection -> repeatable release image/GHCR publishing -> backup and
+deploy/restore scripts -> crawler locking/recovery and systemd scheduling ->
+alerts and deployment workflow -> first-release rehearsal and acceptance.
+OCI provisioning, hostname selection, and access setup can proceed alongside
+repository work. Optional production pgAdmin and contributor extras need not
+block an otherwise verified first launch.
+
+## Reference documentation
+
+- [OCI Always Free resources and current limits](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+- [Docker port publishing and host firewalls](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
+- [Publishing images to GHCR from Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
+- [GitHub deployment environments and protection rules](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
