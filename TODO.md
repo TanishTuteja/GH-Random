@@ -1,9 +1,10 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-16. `[x]` means implemented and
+Reviewed against the repository on 2026-10-17. `[x]` means implemented and
 locally verified; `[ ]` means work remains. Local checks do not establish that
-something works in production. OCI resources and GitHub account settings were
-not verified in this review.
+something works in production. OCI resources have not been verified. The public
+repository's active main-protection ruleset was verified on 2026-10-17; other
+GitHub settings remain pending unless explicitly marked complete.
 
 ## Repository implementation
 
@@ -142,12 +143,15 @@ not verified in this review.
   configuration documentation.
 - [x] Adopt feature branches and pull requests for all changes, with no permanent
   `dev` branch. Record the workflow in `AGENTS.md` and the README; branch
-  protection still needs to enforce it on GitHub.
+  protection now enforces PRs and passing CI on GitHub.
 - [x] Create SSH-signed commits. Local signature verification still needs
   `gpg.ssh.allowedSignersFile`; GitHub verified the CI commit's signature.
-- [ ] Protect `main`: require PRs, passing CI, and resolved conversations; block
-  direct/force pushes and deletion. Decide review and administrator-bypass rules
-  suitable for a solo maintainer before enabling.
+- [x] Protect `main` with the active `Protect main` ruleset: require PRs, resolved
+  conversations, and `Python checks` / `PostgreSQL tests` from GitHub Actions.
+  Require branches to be up to date before merging; block force pushes and
+  deletion. Require zero reviewer approvals for the solo-maintainer workflow,
+  with an empty bypass list so administrators follow the same rules.
+  Verified via GitHub's ruleset API and protected-branch flag on 2026-10-17.
 - [ ] Protect release tags from accidental changes/deletion and document signed
   tag creation and verification.
 - [ ] Add Dependabot for Python, GitHub Actions, and Docker base images; enable
