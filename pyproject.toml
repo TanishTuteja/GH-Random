@@ -31,6 +31,31 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[tool.uv]
+required-version = "==0.13.1"
+# Build backends are resolved separately from runtime/dev packages. Pin and
+# verify the complete Hatchling build environment as well.
+build-constraint-dependencies = [
+  { requirement = "hatchling==1.32.4", hashes = [
+    "sha256:08ecf7548fb48205e7f213d70c71e67b8271b7242093dc3f1da578b42c734a2c",
+  ] },
+  { requirement = "packaging==26.3", hashes = [
+    "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+  ] },
+  { requirement = "pathspec==1.1.1", hashes = [
+    "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189",
+  ] },
+  { requirement = "pluggy==1.7.0", hashes = [
+    "sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec",
+  ] },
+  { requirement = "tomlkit==0.15.2", hashes = [
+    "sha256:05562412163a3037b94497385fb7f9204c637bc605af7a48199e41cf2272f437",
+  ] },
+  { requirement = "trove-classifiers==2026.9.21.13", hashes = [
+    "sha256:8b1ff4f9c191b1040b71c37f1e445ab99732911e3cd91de52838453a854d7a17",
+  ] },
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

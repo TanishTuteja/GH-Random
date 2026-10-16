@@ -16,8 +16,9 @@ GitHub settings remain pending unless explicitly marked complete.
   read-only filesystem.
 - [x] Add `.dockerignore`; package application code and migrations without
   copying local secrets, keys, or development files.
-- [ ] Make dependencies repeatable with a committed lock or equivalent pinned
-  dependency set. Currently each build resolves `pyproject.toml` version ranges.
+- [x] Make dependencies repeatable with committed `uv.lock`, shared locked
+  installation in local setup/CI/Docker, and hash-verified build-tool constraints.
+  Pin uv and use Python 3.12 across the supported environments.
 - [ ] Pin reviewed Python, PostgreSQL, and Caddy images to immutable digests and
   document how updates will be reviewed.
 

@@ -244,3 +244,26 @@ instructions still require the user's authorization before an agent merges.
 Verified the saved ruleset using GitHub's API and confirmed that `main` reports
 `protected: true`. This changes repository settings, not deployment behavior.
 
+## 2026-10-17 — One dependency lock for development, CI, and production
+
+Use uv 0.13.1 and commit its universal `uv.lock` rather than maintaining separate
+platform-specific requirement files. Keep the existing dependency ranges and
+optional `dev` extra in `pyproject.toml`; the lock records resolved runtime/dev
+versions and artifact hashes, while `.python-version` selects Python 3.12.
+Initial locking resolves the current compatible versions, which may be newer
+than the existing local virtual environment; validate the resulting environment
+and images rather than assuming the previous test results still apply.
+
+Local setup and CI use `uv sync --locked --extra dev`. Production installs the
+runtime subset without editable installation. `--locked` rejects drift between
+the declarations and lock instead of silently choosing new versions. Pin uv in
+project configuration, let the SHA-pinned setup action read that version, and
+copy the official Docker uv binary from an immutable multi-architecture digest.
+
+Build dependencies are resolved separately, so constrain Hatchling and its full
+Python 3.12 build dependency graph to reviewed versions and published wheel
+hashes as well. Keep these constraints in project configuration and the lock.
+Dependency changes, lock refreshes, and tool updates require their own tested
+PRs. This establishes Python dependency reproducibility; pinning the Python,
+PostgreSQL, and Caddy images remains a separate tracked task.
+

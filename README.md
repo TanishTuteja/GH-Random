@@ -54,13 +54,21 @@ The authoritative definitions live in app/core/filters.py.
 
 ## First-time local setup
 
-Requires Python 3.12 or newer, Docker Desktop, and a configured GitHub App
-installation and private key.
+Requires Python 3.12 (selected by `.python-version`), uv 0.13.1, Docker Desktop,
+and a configured GitHub App installation and private key. Install the pinned uv
+version using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/),
+or install it with Python from a terminal with no virtual environment active:
 
 ~~~powershell
-python -m venv .venv
+python -m pip install --user "uv==0.13.1"
+~~~
+
+Ensure the installed `uv` command is on your PATH (`uv --version`), then run the
+following from the project directory:
+
+~~~powershell
+uv sync --locked --extra dev
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ~~~
 
@@ -90,6 +98,40 @@ GITHUB_APP_PRIVATE_KEY_PATH=C:/secure/location/your-app.private-key.pem
 Do not put the private key or any real deployment password in the repository.
 Unless a command says otherwise, the commands below assume the virtual
 environment is active; run `.\.venv\Scripts\Activate.ps1` in each new terminal.
+
+### Dependency locking and updates
+
+`pyproject.toml` declares supported dependency ranges; the committed `uv.lock`
+pins the resolved runtime and optional `dev` dependencies, including transitive
+packages and artifact hashes across platforms. `uv sync --locked --extra dev`
+creates or updates `.venv` to match those pins and installs this project in
+editable mode. CI uses the same command. A stale or missing lock fails instead
+of being regenerated during an install.
+
+Docker installs the runtime subset with `uv sync --locked --no-default-groups
+--no-editable --no-cache`, without the `dev` extra. The uv version is pinned in
+`pyproject.toml`; CI reads it there and Docker copies the corresponding official
+uv image by digest. Hatchling and its build dependencies have separate pinned,
+hash-verified constraints in `pyproject.toml`, also recorded in the lockfile.
+
+After editing dependency declarations, regenerate the lock deliberately and
+commit both files in the same PR:
+
+~~~powershell
+uv lock
+uv sync --locked --extra dev
+~~~
+
+To update one package within the declared ranges, use
+`uv lock --upgrade-package httpx`, then sync and run the verification checks.
+Use `uv lock --upgrade` only for an intentional broader dependency update.
+Build-tool updates also require reviewing their constraint versions and wheel
+hashes; uv updates must keep `required-version` and the Docker uv digest aligned.
+Run `uv lock --check` to check freshness without rewriting the lock.
+
+Dependency locking does not pin operating-system packages or the Python base
+image; production base/service image digest pinning is tracked separately in
+`TODO.md`.
 
 ## 1. Database service
 
@@ -275,7 +317,8 @@ tab. It runs two independent jobs on Ubuntu with Python 3.12:
   service, followed by `alembic upgrade head` and `alembic check` to verify the
   baseline creates the schema and matches the models.
 
-CI creates its own virtual environment and uses disposable database credentials.
+CI installs the pinned uv tool and creates its virtual environment from
+`uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.
 It needs no repository secrets, GitHub App key, production database, or real
 GitHub API requests. Both database URLs point to the disposable test database;
 test fixtures recreate its tables. Never point the tests at a database you want
