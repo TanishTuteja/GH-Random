@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+# No release, package, or deployment writes in the verification job.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      tag: ${{ steps.source.outputs.tag }}
+      image: ${{ steps.source.outputs.image }}
+    steps:
+      - name: Check out event commit, not a moving branch or tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Verify signed tag, version, main ancestry, and successful source CI
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/release.py verify --metadata "$RUNNER_TEMP/release.json"
+
+  publish:
+    name: Publish ARM64 release
+    needs: verify
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: write # Attach assets to the existing release; do not create tags.
+      actions: read
+      packages: write
+    env:
+      RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+      IMAGE: ${{ needs.verify.outputs.image }}
+    steps:
+      - name: Check out the verified source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Recheck source before using write permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/release.py verify --metadata "$RUNNER_TEMP/release.json"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR with the temporary Actions token
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push the versioned image with provenance and SBOM
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.RELEASE_TAG }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.verify.outputs.commit }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Smoke-test the exact published digest before attaching deployment assets
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$IMAGE@$DIGEST"
+          python .github/scripts/check_containers.py --image "$IMAGE@$DIGEST"
+
+      - name: Check tag again and package matching deployment files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python .github/scripts/release.py verify --metadata "$RUNNER_TEMP/release.json"
+          python .github/scripts/release.py bundle --metadata "$RUNNER_TEMP/release.json" --digest "$DIGEST" --output dist/release
+
+      - name: Attach digest, metadata, deployment archive, and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY"
+
+      - name: Record the immutable release reference
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          printf 'Release `%s` passed container smoke tests.\n\nImage: `%s@%s`\n\nNo production deployment was started.\n' "$RELEASE_TAG" "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"

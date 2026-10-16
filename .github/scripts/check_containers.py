@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import os
@@ -101,12 +102,12 @@ def smoke_inside_web() -> None:
     print("Packaged web, database discovery, Caddy proxy/headers, and public routes passed.")
 
 
-def check_containers() -> None:
+def check_containers(existing_image: str | None = None) -> None:
     """Validate and start the real production services with a small CI overlay."""
 
     root = Path(__file__).resolve().parents[2]
     project = f"gh-random-ci-{uuid.uuid4().hex[:12]}"
-    image = f"{project}:smoke"
+    image = existing_image or f"{project}:smoke"
     environment = {
         **os.environ,
         "GH_RANDOM_IMAGE": image,
@@ -160,9 +161,14 @@ def check_containers() -> None:
         assert all(not s.get("ports") for s in rendered["services"].values())
         assert rendered["networks"]["backend"]["internal"] is True
 
-        print("Building the locked production image...", flush=True)
-        run(["docker", "build", "--tag", image, "."])
-        image_built = True
+        if existing_image is None:
+            print("Building the locked production image...", flush=True)
+            run(["docker", "build", "--tag", image, "."])
+            image_built = True
+        else:
+            print(f"Testing the supplied image: {image}", flush=True)
+            if run(["docker", "image", "inspect", image], capture=True, check=False).returncode:
+                run(["docker", "pull", image])
         print(
             "Validating the HTTPS Caddy configuration without requesting certificates...",
             flush=True,
@@ -228,7 +234,7 @@ def check_containers() -> None:
 if __name__ == "__main__":
     if sys.argv[1:] == ["--inside"]:
         smoke_inside_web()
-    elif sys.argv[1:]:
-        raise SystemExit("Usage: python .github/scripts/check_containers.py")
     else:
-        check_containers()
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--image", help="Test an existing image instead of building one")
+        check_containers(parser.parse_args().image)

@@ -420,3 +420,92 @@ the final manual crawler command with the planned six-hour systemd timer. A
 future deployment script will automate the pull, backup, migration, restart,
 and smoke-test steps; do not treat the commands above as a substitute for a
 tested backup and restore procedure.
+
+### Creating a release (not deploying it)
+
+Merging a PR does not publish an image or change production. When a release
+candidate is ready, first merge it into `main` and wait for all three **main-push**
+CI jobs to pass. PR checks alone do not qualify the merge commit for release.
+Keep `project.version` in `pyproject.toml` aligned with the intended stable tag;
+version changes also need `uv lock` and the ordinary PR process.
+
+From an up-to-date, clean local `main`, create an annotated, signed tag:
+
+~~~powershell
+git switch main
+git pull --ff-only
+git status --short
+git tag -s v0.1.0 -m "GH Random v0.1.0"
+git push origin v0.1.0
+~~~
+
+`git tag -s` uses the configured SSH signing key, just like our signed commits.
+The signing public key must be registered on GitHub and the tag must show
+**Verified** there. Local `git verify-tag v0.1.0` additionally requires an
+appropriate SSH allowed-signers file; a missing local trust file does not mean
+GitHub rejected the signature. Never create the tag through the release UI,
+which would bypass this signing step. Protect `v*` tags against updates/deletion
+before the first release; that repository setting is still a deployment TODO.
+
+In GitHub → Releases → Draft a new release, select the **existing** `v0.1.0`
+tag, write release notes, leave prerelease unchecked, and publish. The `Release`
+workflow then:
+
+1. Requires a stable `vMAJOR.MINOR.PATCH` tag matching the package version, an
+   annotated signature verified by GitHub, and a commit belonging to `main`.
+2. Requires successful `Python checks`, `PostgreSQL tests`, and `Production
+   containers` in the latest main-push CI run for that exact commit. A pending,
+   cancelled, failed, or skipped required check stops publishing.
+3. Builds `linux/arm64` on a native ARM runner and publishes
+   `ghcr.io/tanishtuteja/gh-random:v0.1.0` using the temporary `GITHUB_TOKEN`.
+   It adds source/revision/version/license labels and BuildKit provenance/SBOM.
+   Initial releases are ARM64-only, not AMD64 images for Windows PCs.
+4. Pulls the **published digest**, then runs the isolated production Compose,
+   migration, crawler-status, and web/API checks against that exact image.
+5. Attaches `image-digest.txt`, `release.json`, `SHA256SUMS`, and
+   `gh-random-v0.1.0-deployment.tar.gz` only after successful smoke tests.
+   The archive contains matching Compose/Caddy files, safe configuration
+   templates, README/license, and release metadata. Its Compose template already
+   pins the released image digest; no production secrets are included.
+
+A release is ready to deploy only when this workflow is green **and** all four
+assets exist. GitHub's published-release event precedes the image build, so a
+visible release alone is not a readiness signal. A failed smoke test may leave
+an image in GHCR without deployment assets; do not deploy it. No production
+deployment is triggered by this workflow. Never move a successful version tag,
+republish its image, or replace its assets. A rerun refuses existing deployment
+assets rather than silently overwriting a completed release. If the final
+asset upload partially fails, inspect it and deliberately remove only those
+incomplete generated assets before retrying; do not do this for a usable release.
+
+We choose **public GHCR images** so the VM needs no registry credential. GitHub
+initially creates packages as private even for public repositories. After the
+first publish, open the package's settings, change its visibility to public,
+and verify an anonymous digest pull with a clean Docker configuration before
+deploying. Do not copy the Actions token onto the VM. Publishing uses GitHub's
+[documented GHCR workflow authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry);
+package visibility/anonymous access still need that first-release verification.
+
+On the Linux VM, download these four release assets into a new version-specific
+directory. Verify before extracting (checksums detect corruption, not a malicious
+replacement of both assets and checksums):
+
+~~~sh
+sha256sum --check SHA256SUMS
+tar -xzf gh-random-v0.1.0-deployment.tar.gz
+cat image-digest.txt
+cat release.json
+~~~
+
+Use the archive's files rather than a checkout of moving `main`. Review/copy
+`deployment/compose.env.example` to `/etc/gh-random/compose.env`, retaining the
+exact digest and existing secret paths; never overwrite live role credentials
+with example passwords. Use the manual commands above until tested deployment
+automation exists. The Python dependencies are locked, but the Python,
+PostgreSQL, and Caddy base-image digest pins are still tracked separately.
+
+For rollback, retain each release directory and its previous digest. Select
+the previous release's deployment files and image only if its code is compatible
+with the current database schema. Do not automatically downgrade Alembic or
+delete database volumes. Rehearsed backup/restore and deployment/rollback scripts
+remain prerequisites for the first production launch.
