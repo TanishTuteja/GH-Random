@@ -288,3 +288,36 @@ The in-container seeding path requires a test-only environment marker. Never
 run a real crawl or require production/GitHub secrets for this job. Print logs
 on failure and remove only the generated test stack and image afterward.
 
+## 2026-10-17 — Signed stable releases publish ARM64 images, not deployments
+
+Use the published GitHub Release event, with a pre-existing SSH-signed annotated
+`vMAJOR.MINOR.PATCH` tag. Require GitHub signature verification, version agreement
+with `pyproject.toml`, membership of the exact commit in `main`, and all three
+successful jobs in the latest main-push CI run for that commit. PR CI alone does
+not certify the merge commit. Fail closed rather than wait indefinitely for CI;
+publish only after main CI finishes. Prereleases need a future explicit policy.
+
+Start with ARM64 only on the free standard native ARM runner, matching OCI.
+Publish a version tag with source/revision/version/license labels and request
+BuildKit provenance plus an SBOM. The source verifier is read-only; only the
+publishing job receives package/release writes. Actions are commit-pinned and
+checkout does not persist credentials. No personal publishing token or VM
+secrets are required. Recheck the tag before publishing and before asset creation.
+
+After pushing, pull the immutable digest and run the production integration
+check against it, not a rebuild or mutable tag. Only then attach the digest,
+release metadata, checksums, and an allowlisted deployment archive from the
+same checkout. Pin that archive's Compose template to the digest. Do not glob
+configuration directories or include live secrets. Refuse reruns once generated
+assets exist, and do not overwrite completed releases. A failed run may leave
+an image without usable deployment assets; release visibility alone does not
+mean readiness. This workflow deliberately does not deploy production.
+
+Choose public GHCR images for anonymous VM pulls. New packages initially default
+to private, so visibility and anonymous access require explicit verification
+after the first authorized publish. No release/tag/image has been published as
+part of implementing the workflow. Tag protection, immutable base-image pins,
+production deployment/rollback automation, and live first-release verification
+remain separate checklist items; checksums are not cryptographic publisher
+attestations of the release archive.
+

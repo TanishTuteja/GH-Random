@@ -121,15 +121,20 @@ GitHub settings remain pending unless explicitly marked complete.
   production Compose/HTTPS Caddy validation, fresh-database migration/drift,
   hardened crawler status, and proxied web/API smoke tests. Use isolated test
   resources and automatic cleanup; require the `Production containers` check.
-- [ ] Add a release workflow for signed semantic-version tags and GitHub
+- [x] Add a release workflow for signed semantic-version tags and GitHub
   Releases, starting with `v0.1.0`. Verify the source and passing checks, build
   ARM64 (optionally AMD64 too), and publish to GHCR using `GITHUB_TOKEN`.
-- [ ] Publish the digest and matching deployment files with release metadata;
-  include source/version image labels and document release/rollback commands.
-  Consider build provenance and a dependency inventory.
-- [ ] Choose GHCR package visibility. Prefer public pulls for this open-source
-  project; if private, give the VM only the required pull access. Never copy
-  the temporary Actions `GITHUB_TOKEN` onto the VM.
+- [x] Implement digest/metadata/checksum and matching deployment-archive assets;
+  include source/version image labels and document signed release creation and
+  rollback constraints. Request BuildKit provenance and an SBOM. Smoke-test the
+  exact published digest before attaching assets; refuse completed asset rewrites.
+- [ ] Perform the first actual signed release/GHCR publish and verify all assets,
+  provenance/SBOM, image labels, and ARM64 digest smoke tests. Implementation and
+  offline/CI tests do not establish that publication permissions work.
+- [x] Choose public GHCR images so the VM can pull without registry credentials.
+- [ ] After first publication, change the initially private GHCR package to public
+  and verify anonymous digest pulls. Never copy the temporary Actions token to
+  the VM. Do not announce/deploy a release until its workflow and assets are ready.
 - [ ] Add a production deployment workflow and GitHub `production` environment.
   Record version/digest, status, and URL; set intended branch/approval controls
   after confirming availability for the repository/account plan.
