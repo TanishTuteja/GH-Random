@@ -267,3 +267,24 @@ Dependency changes, lock refreshes, and tool updates require their own tested
 PRs. This establishes Python dependency reproducibility; pinning the Python,
 PostgreSQL, and Caddy images remains a separate tracked task.
 
+## 2026-10-17 — Test production containers on native ARM64 before merge
+
+Add a stable `Production containers` CI job on the standard `ubuntu-24.04-arm`
+runner, matching the planned Oracle VM without QEMU emulation. Keep the existing
+quality and PostgreSQL test jobs on AMD64. All three jobs are required by the
+main-protection ruleset.
+
+Use a standard-library Python runner so the same Compose integration check also
+runs on Windows development machines. It builds the production Dockerfile and
+uses the real production Compose file with a small test-only overlay: no host
+ports and internal HTTP through Caddy. Validate the HTTPS Caddy configuration
+separately without certificate issuance; live DNS/TLS remains a deployment task.
+
+Use tracked example configuration, an invalid placeholder key, and a uniquely
+named Compose project with fresh volumes. Exercise the migration and hardened
+crawler status roles, then seed one disposable repository to check discovery
+through Caddy and confirm the intentionally disabled public routes remain off.
+The in-container seeding path requires a test-only environment marker. Never
+run a real crawl or require production/GitHub secrets for this job. Print logs
+on failure and remove only the generated test stack and image afterward.
+

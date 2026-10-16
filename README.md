@@ -297,8 +297,8 @@ advance forward and must not be rewritten.
 
 ~~~powershell
 pytest
-ruff format --check app tests alembic
-ruff check app tests alembic
+ruff format --check app tests alembic .github/scripts
+ruff check app tests alembic .github/scripts
 pyright
 ~~~
 
@@ -310,12 +310,19 @@ failure retention, random filtering, the API, and the rendered start page.
 
 [CI](https://github.com/TanishTuteja/GH-Random/actions/workflows/ci.yaml) runs on
 pull requests and pushes to `main`, and can also be started from GitHub's Actions
-tab. It runs two independent jobs on Ubuntu with Python 3.12:
+tab. It runs three independent jobs on Ubuntu with Python 3.12:
 
-- `Python checks`: Ruff formatting/linting (including Alembic) and Pyright.
+- `Python checks`: Ruff formatting/linting (including Alembic and CI scripts)
+  and Pyright.
 - `PostgreSQL tests`: the complete test suite against a fresh PostgreSQL 17
   service, followed by `alembic upgrade head` and `alembic check` to verify the
   baseline creates the schema and matches the models.
+- `Production containers`: build the production image on native ARM64, validate
+  production Compose and the HTTPS Caddy configuration, migrate a fresh database,
+  check schema drift and the hardened crawler's local status command, then test
+  the packaged web app through Caddy. Verify empty/seeded catalog discovery,
+  proxy headers, the non-root runtime, exclusion of dev/build packages, and
+  disabled documentation/health routes. No live crawl or GitHub key is needed.
 
 CI installs the pinned uv tool and creates its virtual environment from
 `uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.
@@ -325,17 +332,36 @@ test fixtures recreate its tables. Never point the tests at a database you want
 to keep. The workflow has read-only repository permissions and pins actions to
 commit hashes. Superseded runs for the same PR or branch are cancelled.
 
-The active `Protect main` ruleset requires both `Python checks` and
-`PostgreSQL tests` from GitHub Actions and an up-to-date branch before merging.
+The active `Protect main` ruleset requires `Python checks`, `PostgreSQL tests`,
+and `Production containers` from GitHub Actions and an up-to-date branch before merging.
 It requires pull requests and resolved conversations, blocks force pushes and
 branch deletion, and has no bypass actors. Zero mandatory reviewer approvals
 allows the solo maintainer to merge their own PR after CI passes.
+
+Run the container check locally with Docker running:
+
+~~~powershell
+python .github/scripts/check_containers.py
+~~~
+
+The host script needs only Python's standard library and Docker Compose; it
+builds for the Docker daemon's default architecture. Each run uses a unique
+`gh-random-ci-*` project, the tracked production configuration examples, and a
+plain-text placeholder instead of a real GitHub key. It does not read the local
+`.env`. The small `.github/compose.ci.yaml` overlay removes host port bindings
+and uses HTTP internally, avoiding public DNS or certificate requests. The
+production HTTPS configuration is validated separately; live certificate
+issuance/renewal still needs deployment verification.
+
+On failure, the script prints service status/logs. It cleans up its own test
+containers, volumes, networks, and image on exit, preserving development and
+production data. CI runs the same check on an ARM64 runner to match the VM.
 
 ### Change workflow
 
 Use a short-lived feature branch from the latest `main` for each change,
 including documentation and maintenance. Push signed commits with descriptive
-bodies and open a pull request targeting `main`. Both CI jobs must pass before
+bodies and open a pull request targeting `main`. All three CI jobs must pass before
 merge; leave changes ready for review and merge with the maintainer's approval.
 Delete the feature branch after merging. Do not push directly to `main` or
 maintain a permanent `dev` branch.
