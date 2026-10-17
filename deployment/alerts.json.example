@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "smtp_host": "smtp.example.com",
+  "smtp_port": 465,
+  "smtp_security": "ssl",
+  "smtp_username": "replace-with-smtp-username",
+  "smtp_password_file": "/etc/gh-random/smtp-password",
+  "from_address": "alerts@example.com",
+  "to_addresses": ["operator@example.com"],
+  "state_dir": "/var/lib/gh-random/alerts",
+  "deployment_state_dir": "/var/lib/gh-random/deployments",
+  "smtp_timeout_seconds": 10,
+  "repeat_after_hours": 6,
+  "crawl_max_age_hours": 12,
+  "monitor_backups": false,
+  "backup_max_age_hours": 36
+}

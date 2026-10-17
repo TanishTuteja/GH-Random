@@ -662,13 +662,15 @@ flat `GH_RANDOM_IMAGE=...` assignment. Secret-bearing files stay separate from
 immutable release files. Keep using the same project name (`gh-random` by default),
 state directory, and backup directory across every release.
 
-First deployment, after configuring DNS/firewalls and the private env files:
+First deployment, after configuring DNS/firewalls, private env files, and the
+SMTP configuration described under email alerts below:
 
 ~~~sh
 sudo python3 /opt/gh-random/releases/v0.1.0/deployment/deploy.py apply \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
   --backup-dir /var/backups/gh-random \
+  --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \
   --bootstrap
 ~~~
@@ -701,7 +703,9 @@ The state directory contains private per-attempt JSON journals and command logs,
 plus `current.json` and a persistent `deploy.lock` file. The latter is a kernel
 lock, not a stale-file sentinel: **do not delete it** to force another deployment.
 Logs/backups can contain sensitive data. Protect them; no automated pruning,
-encryption, off-site upload, or alert delivery is installed by this script.
+encryption or off-site upload is installed by this script. Email is opt-in through
+`--alerts-config /etc/gh-random/alerts.json`; configure and test it as described
+below before production deployment. Without that flag, deploy does not send mail.
 
 `--timeout-seconds` defaults to 1,800 per operational command/controller idle
 period and bounds migration statements. `--smoke-timeout-seconds` defaults to 60.
@@ -739,6 +743,7 @@ sudo python3 /opt/gh-random/releases/v0.1.1/deployment/deploy.py rollback \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
   --backup-dir /var/backups/gh-random \
+  --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \
   --confirm-schema-compatible
 ~~~
@@ -772,6 +777,8 @@ and the first catalog crawl. The installed bootstrap reads the private deploy
 release's supervisor with its matching Compose/deploy helpers. It does not pin
 an old image or read deployment files from moving `main`. Future successful
 deployments/rollbacks therefore select the appropriate crawler automatically.
+Before the enable/start commands below, install and test the email handler and
+monitor from the next section; the crawler unit depends on that failure handler.
 
 Default schedule: 00:00, 06:00, 12:00, 18:00 **UTC**, which is **05:30, 11:30,
 17:30, 23:30 IST**. It is independent of the VM's local timezone. `Persistent=true`
@@ -863,9 +870,115 @@ not an administrator's registry credentials. Docker access remains root-equivale
 these settings are defense in depth, not a security boundary around untrusted code.
 Crawler Docker logs rotate at 10 MB × 3 and stream into the journal. Global
 journald/disk retention still needs VM configuration. Error/timeout states are
-observable, but **no alert destination or failure/staleness notification is wired
-yet**. Live VM timer installation, reboot behavior, real GitHub authentication,
-and alert delivery remain acceptance tasks.
+observable. Install/configure the email handler and hourly monitor below before
+enabling production crawling. Live VM timer installation, reboot behavior, real
+GitHub authentication, and inbox delivery remain acceptance tasks.
+
+### Email failure alerts and missing-success monitoring
+
+Use `deployment/notifications.py` (host Python 3.12+, standard library only) for
+SMTP-over-TLS alerts. Nothing contacts an email provider until explicitly invoked
+with your private configuration. CI captures mail on loopback only; it cannot
+verify your provider's permissions, quotas, spam filtering or real inbox delivery.
+
+Copy deployment/alerts.json.example to **/etc/gh-random/alerts.json**, outside the
+repository/release directory, owned by root with mode 0600. Replace the SMTP
+host, port, username, sender and recipient addresses. Put the SMTP credential in
+**/etc/gh-random/smtp-password**, also root-owned mode 0600; never put it in a
+command line, Git, Docker env, unit file or chat. Use a provider-issued SMTP/app
+credential, not a general account password where the provider supports one.
+Confirm the provider's free allowance and permitted sender before enabling it.
+
+`smtp_security` accepts only `ssl` (usually port 465) or `starttls` (usually 587).
+Certificate and hostname verification are mandatory; STARTTLS never falls back
+to plaintext. `smtp_ca_file` is an optional absolute private CA file for an
+explicitly trusted private relay, not a verification bypass. For a trusted relay
+without SMTP AUTH, omit/empty **both** username and password-file fields. Use
+1–5 recipient addresses. See [Python SMTP](https://docs.python.org/3.12/library/smtplib.html)
+and [TLS contexts](https://docs.python.org/3.12/library/ssl.html#ssl.create_default_context).
+
+Initial policies in alerts.json are configurable: repeat unresolved alerts no
+more than every **six hours**, warn after **12 hours** without a successful crawl,
+and (when enabled) after **36 hours** without a successful daily backup. These
+are initial operational choices, not measured SLAs. The hourly UTC :15 check runs
+at local :45 in IST. A missing first success receives the configured grace period
+starting at the first monitor invocation; an existing success is aged immediately.
+The first real crawl should complete before launch. `monitor_backups` defaults
+false until scheduled backup automation is installed; do not imply backup
+protection merely because its alert policy exists.
+
+From a trusted, extracted release, after preparing the private configuration:
+
+~~~sh
+sudo install -Dm0644 deployment/notifications.py /usr/local/lib/gh-random/notifications.py
+sudo install -Dm0644 deployment/systemd/gh-random-alert@.service /etc/systemd/system/gh-random-alert@.service
+sudo install -Dm0644 deployment/systemd/gh-random-monitor.service /etc/systemd/system/gh-random-monitor.service
+sudo install -Dm0644 deployment/systemd/gh-random-monitor.timer /etc/systemd/system/gh-random-monitor.timer
+sudo python3 /usr/local/lib/gh-random/notifications.py test --config /etc/gh-random/alerts.json
+~~~
+
+That **test command sends a real email**. Verify its arrival (including spam) and
+inspect provider rejection/bounce information before proceeding. Verify/reload
+the matching crawler/alert/monitor units, then enable the monitor timer:
+
+~~~sh
+sudo systemd-analyze verify /etc/systemd/system/gh-random-alert@.service /etc/systemd/system/gh-random-monitor.service /etc/systemd/system/gh-random-monitor.timer /etc/systemd/system/gh-random-crawler.service /etc/systemd/system/gh-random-crawler.timer
+sudo systemctl daemon-reload
+sudo systemctl start gh-random-monitor.service
+sudo systemctl enable --now gh-random-monitor.timer
+sudo systemctl list-timers gh-random-monitor.timer
+sudo journalctl -u 'gh-random-alert@*' -u gh-random-monitor.service --since today
+~~~
+
+Install the handler **before** enabling the crawler timer: the crawler now has
+an OnFailure template hook, including supervisor timeout/SIGKILL and preflight
+failures. Use systemd 251+ (for example Ubuntu 24.04) so the handler receives the
+original failure's invocation/result snapshot instead of racing the next run;
+see [systemd's monitor variables](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml).
+The standalone `unit-failure --unit gh-random-crawler.service` command instead
+reads the current unit state and is only for deliberate operator diagnostics.
+For nonstandard unit names set crawler_unit/backup_unit/monitor_unit in the same
+private JSON and adjust the unit paths/commands consistently.
+
+Deploy and rollback should pass `--alerts-config /etc/gh-random/alerts.json` in
+addition to their existing arguments. Configuration is checked before deployment
+mutations. Notifications run **after** deployment ownership is released, in a
+separate child bounded to 60 seconds; delivery failure cannot turn a successful
+deployment into a failed one or hold the database lease. SIGKILL, power loss or
+failure before a notifier starts can still prevent a deploy email. Do not infer
+that lack of an email proves a deployment succeeded; inspect its journal and
+current.json, and monitor the deployment workflow outcome separately.
+
+Alerts contain whitelisted run/deploy IDs, phase/status, release tag and unit
+result/invocation, plus diagnostic commands—not raw logs, SQL, database URLs,
+SMTP credentials or the GitHub key. Exceptions from the mail provider are
+redacted in public command output. Messages are considered sent only after SMTP
+acceptance, not guaranteed inbox delivery. Delivery is **at least once**, not
+exactly once: a crash after acceptance or partial recipient rejection can cause
+duplicates on retry. A successful later operation clears its incident and sends
+one recovery email only if a failure was previously accepted.
+
+Private /var/lib/gh-random/alerts contains the durable alert ledger, monitor
+heartbeat and kernel lock. Do not delete the lock to force delivery. Failed SMTP
+attempts remain pending for the next hourly check, with no restart/alert loop.
+A separate crawler-success.json watermark survives later failed runs; only a
+successful child **and** cleanup update it. Older successful state cannot clear
+a newer preflight failure. The watermark tracks **managed** crawls: direct manual
+CLI/Docker crawls do not update it. For a monitored manual activation, use
+`systemctl start gh-random-crawler.service` after deployment.
+The mailer has no OnFailure hook; the monitor's own
+failure can alert once through the same bounded handler, without recursion.
+Unit sandboxing limits filesystem writes to alert state and masks the standard
+Docker socket and app-secret paths. Review those masks if using custom paths.
+Root identity and remaining host access still make this defense in depth, not an
+untrusted-code sandbox. Install/upgrade the host script and units deliberately
+from matching release files; deployments do not silently change host policy.
+
+An **independent external monitor is still required** for public HTTPS downtime,
+missed monitoring/backup heartbeats, and complete VM/network/mail-provider failure.
+The on-host timer cannot report its own powered-off VM or deliver through a dead
+mail provider. Configure that external service and prove its email delivery before
+public launch; no external monitor or live SMTP provider is provisioned here.
 
 ### Production runtime hardening and maintenance
 

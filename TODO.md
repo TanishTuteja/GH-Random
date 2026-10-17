@@ -102,8 +102,10 @@ GitHub settings remain pending unless explicitly marked complete.
   limit, independent systemd fallback and ExecStopPost cleanup. Rehearse Docker
   timeout/orphan recovery plus native systemd timer retry/stop/SIGKILL/watchdog
   in CI without real GitHub traffic or permanent service installation.
-- [ ] Connect failure/timeout and missing-success states to real alerts; Docker
-  daemon outages may require operator recovery of the recorded managed child.
+- [x] Implement crawler failure/timeout systemd email hooks and an hourly
+  missing-success monitor with durable retries, cooldowns and recovery notices.
+- [ ] Configure SMTP and verify real failure/recovery/staleness emails on the VM;
+  Docker outages may require operator recovery of the recorded managed child.
 - [ ] Smoke-test real GitHub App authentication from the hardened ARM64 crawler
   container, including root-owned key access and outbound network connectivity.
 
@@ -127,9 +129,12 @@ GitHub settings remain pending unless explicitly marked complete.
   before relying on the complete backup procedure.
 - [x] Choose email alerts through configurable SMTP; credentials/recipients stay
   in private VM configuration, not the repository. No live delivery tested yet.
-- [ ] Implement email alerts for crawler, backup, and deployment failures.
-  Include run/deployment identifiers and useful logs without secrets; test
-  delivery and prevent alert loops.
+- [x] Implement TLS-only email for crawler/systemd and opt-in deployment failures,
+  with safe identifiers/diagnostic commands, not raw logs or secrets. Test actual
+  TLS on loopback, durable retries, cooldown, recovery and non-recursive handlers.
+- [ ] Wire backup failures/success watermarks when scheduled backups are added.
+- [ ] Configure the real SMTP provider/sender/recipients, confirm its free quota,
+  and test inbox delivery and failure/recovery without relying solely on SMTP acceptance.
 - [ ] Add monitoring outside the VM for site downtime and missing successful
   crawls/backups. An on-host failure handler cannot alert while its VM is down.
 - [x] Bound all production Docker logs and container resources; add a reviewed,

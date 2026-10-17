@@ -3,6 +3,7 @@ Description=GH Random scheduled catalog crawl
 Wants=network-online.target
 Requires=docker.service
 After=network-online.target docker.service
+OnFailure=gh-random-alert@%n.service
 
 [Service]
 Type=exec
