@@ -216,7 +216,10 @@ python -m app.cli crawl
 It performs the 200 configured filter combinations and retrieves up to ten
 pages for each. Search request starts are at least five seconds apart, so a
 worst-case crawl can take roughly three hours. Do not start a second crawl while
-one is running.
+one is running. A PostgreSQL advisory lock now enforces this across cooperating
+processes/containers and also excludes online Alembic migrations; a contender
+fails promptly rather than waiting indefinitely or issuing GitHub searches.
+Browsing and local `status` reads remain available.
 
 Check the catalog and crawler state from another terminal:
 
@@ -234,6 +237,42 @@ python -m app.cli crawl --resume
 Resume verifies that the filter plan has not changed and uses the original
 crawl's date boundaries and GitHub sort order. It is intentionally explicit:
 neither Docker nor the web application starts a crawl automatically.
+
+### Crawl ownership, interruptions, and upgrades
+
+**Before upgrading from a version without catalog locking, stop every old
+crawler and migration process.** An older process does not participate in this
+protocol, so the new code cannot safely infer its ownership. Do not run old and
+new crawler versions together, even if they connect to the same database.
+
+Each crawl retains one physical PostgreSQL connection and a session-level lock
+for its whole run. Its short transactions still commit checkpoints normally;
+the lock survives commits/rollbacks. Statements and commits verify the original
+connection still owns the lock. Losing the connection/lock aborts the old run;
+reconnecting cannot silently resume writing, publishing, or marking another
+owner's state failed. The connection is physically closed on exit rather than
+returning an advisory lock to the connection pool. Use a direct PostgreSQL
+connection, not a transaction-pooling proxy, for these operator processes.
+
+After PostgreSQL releases a dead owner's session (for example after process
+death, reboot, or connection loss), the next normal or `--resume` crawl can
+acquire exclusive ownership. It marks leftover `running` runs and their staging
+generations failed, preserving the active catalog and committed checkpoints.
+A normal run starts fresh; `--resume` attempts the newest failed checkpoint as
+before. Failed/interrupted runs do not advance the successful-sort rotation.
+If generation/run state is inconsistent, recovery fails for manual inspection
+instead of guessing or demoting an active catalog. No schema migration is
+required for this ownership change.
+
+Recovery uses ownership, **not run age**. A live/hung connection can keep its
+lock until it exits or PostgreSQL detects its disconnection; elapsed time alone
+does not authorize takeover. `status` shows persisted state, not proof that a
+process is alive. Do not clear a running row in pgAdmin to force concurrency.
+Inspect the actual process/container and database activity first. A disconnected
+old crawler may finish an in-flight GitHub request, but its guarded database
+connection cannot checkpoint/publish the response. Service timeouts, stopping
+Docker children, six-hour timers, alerts, and whole-deployment locking remain
+separate operational work.
 
 The two rate-limit settings only apply after GitHub explicitly returns a
 rate-limit response. The transport settings apply only to a network or timeout
@@ -293,6 +332,14 @@ the development-only history was squashed; no catalog data was rebuilt or
 deleted. From the first deployed database onward, migration history must only
 advance forward and must not be rewritten.
 
+Online Alembic commands acquire the same catalog lock as the crawler, including
+schema checks/introspection through Alembic's online environment. If a crawl or
+another migration owns it, the command fails before catalog DDL; retry after the
+owner finishes rather than clearing its database row. The migration's statements
+and commits use the guarded owning connection. Offline `--sql` generation does
+not connect or lock anything: manually executing that SQL, editing tables in
+pgAdmin, or using old operator code bypasses this cooperative protection.
+
 ## Verification
 
 ~~~powershell
@@ -325,7 +372,8 @@ tab. It runs three independent jobs on Ubuntu with Python 3.12:
   disabled documentation/health routes. Rehearse a real dump/restore into a new
   database, compare schema/catalog counts, verify discovery against the restored
   copy, and reject corrupt archives/existing targets. No live crawl or GitHub key
-  is needed.
+  is needed. Also verify packaged crawler exclusion and abandoned-run recovery
+  using an interrupted fake one-combination crawl with no GitHub API traffic.
 
 CI installs the pinned uv tool and creates its virtual environment from
 `uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.

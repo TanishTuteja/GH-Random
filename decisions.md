@@ -355,3 +355,43 @@ production restoration/promotion remain explicit open deployment items. No live
 database was backed up/restored, no timer installed, and no OCI service configured
 while implementing/testing this change.
 
+## 2026-10-17 — Database ownership before deploy orchestration
+
+Implement the coordination prerequisite before the deploy script: a `running`
+row is not an atomic mutex or reliable liveness signal. Crawls and online Alembic
+now acquire the same nonblocking, database-scoped PostgreSQL session advisory
+lock. Its fixed namespace/resource are a protocol contract shared by versions,
+not tunable environment settings that could accidentally disable exclusion.
+No extra table, migration, public endpoint, or external locking service is needed.
+
+Bind all crawler sessions to the exact physical connection owning the lock;
+commit page checkpoints normally without releasing ownership. Connection-local
+statement and commit guards check both physical identity and actual lock
+ownership, so SQLAlchemy reconnects cannot turn a disconnected old process into
+an unfenced writer. Online Alembic uses the same guarded connection for DDL.
+Always physically close/invalidate the owning session on exit rather than
+returning its session lock to a pool. Readers and snapshot backups remain free
+to operate. Transaction-pooling database proxies are not supported here.
+
+After acquiring ownership, a crawler can mark leftover running/staging pairs
+failed without touching active membership or committed cursors. A normal run
+starts fresh; explicit resume retains its existing newest-failed/checkpoint/plan
+rules. Inconsistent run/generation state requires inspection rather than guessing.
+Failure recording must not mask the original error, and a disconnected old
+worker must not overwrite a successor's recovered/published state. No elapsed
+timeout authorizes takeover of a live owner. PostgreSQL must detect the old
+session ending before a new owner can recover it.
+
+This protocol cannot identify a still-running legacy process that never acquired
+the lock: stop all pre-lock crawler/migration processes before upgrading. Advisory
+locking is cooperative, not an access-control boundary; direct SQL and offline
+DDL scripts can bypass it. Use the online Alembic entrypoint for schema changes.
+
+Test real PostgreSQL exclusion, lock lifetime over commit/rollback, physical
+connection loss/reconnect, backend termination, stale-writer fencing, actual
+online Alembic contention, unclean child-process exit, and normal/resume recovery
+with fake GitHub responses. No live crawl or development DB mutation is needed.
+Full deployment serialization, backup-before-migration workflow, timer control,
+Docker child termination, timeouts/alerts, and systemd scheduling remain the next
+operational increments; this PR does not claim those are implemented.
+

@@ -57,6 +57,8 @@ GitHub settings remain pending unless explicitly marked complete.
 - [ ] Coordinate deployments with crawls: wait for an existing run or fail
   clearly, block new runs during deployment, and restore scheduling even on
   deployment failure. Avoid changing schema underneath a running crawler.
+  Database exclusion for crawls and online Alembic is implemented; whole-deploy
+  orchestration and timer/child-process coordination still need implementation.
 - [ ] Deploy Compose, Caddy, scripts, and systemd files from the same release
   revision as the image. Record version, commit, digest, and prior digest;
   never combine a release image with deployment files taken from moving `main`.
@@ -78,12 +80,16 @@ GitHub settings remain pending unless explicitly marked complete.
 - [ ] Add/install a systemd service and persistent six-hour timer for a normal
   full crawl, without `--resume`, using the deployed digest. Document timezone
   and behavior after missed runs.
-- [ ] Add shared overlap protection for manual/scheduled crawls and deployments.
-  Checking for a running database row is not a complete atomic locking mechanism.
-- [ ] Recover after a killed process, host reboot, or DB outage during failure
-  recording. A leftover `running` row currently blocks later crawls; establish
-  process ownership/locking and safely mark abandoned runs failed. Elapsed time
-  alone must not cause a live crawler to be declared abandoned.
+- [x] Add database-scoped session ownership for all manual/scheduled CrawlService
+  calls and online Alembic operations. Contenders fail promptly; every statement
+  and commit is fenced to the original owning connection, including after a
+  disconnect. Browsing/status reads are not excluded. Whole-deploy orchestration
+  is tracked above, separately from schema/crawler exclusion.
+- [x] Recover abandoned `running` runs after PostgreSQL releases a dead owner's
+  connection, including unclean process exit and failure-recording outages.
+  The next exclusive normal/resume crawler marks only consistent staging state
+  failed, preserves checkpoints/active catalog, and never uses age to evict a
+  live owner. Stop legacy pre-lock processes before the first upgrade.
 - [ ] Ensure stopping the systemd unit also stops its Docker crawler; define
   maximum runtime and hung-run alerts. Verify interruptions cannot permanently
   block subsequent scheduled runs.

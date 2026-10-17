@@ -206,6 +206,68 @@ print('Restored catalog discovery passed; source catalog remains usable.')
     print("Backup, new-database restore, discovery, and failure guards passed.", flush=True)
 
 
+def smoke_ownership_inside_web() -> None:
+    """Run the packaged crawler with a one-item fake plan and no GitHub calls."""
+    from sqlalchemy import select
+
+    from app.core.settings import get_settings
+    from app.crawler.planning import build_crawl_search_plan
+    from app.crawler.service import CrawlService
+    from app.db.models import CrawlRun
+    from app.db.operations import CatalogOperationBusy
+    from app.db.session import create_engine_from_url, create_session_factory
+    from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
+
+    assert os.environ.get("GH_RANDOM_CONTAINER_SMOKE") == "1", "Not a CI smoke container"
+    engine = create_engine_from_url(get_settings().database_url)
+    factory = create_session_factory(engine)
+
+    def plan(reference: datetime):
+        from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
+
+        return build_crawl_search_plan(
+            SUPPORTED_LANGUAGES[:1], STAR_BUCKETS[:1], PUSHED_BUCKETS[:1], reference_time=reference
+        )
+
+    class EmptySearcher:
+        def __init__(self, interrupt: bool = False) -> None:
+            self.interrupt = interrupt
+
+        def search_repositories(
+            self,
+            query: str,
+            *,
+            page: int = 1,
+            per_page: int = 100,
+            sort: RepositorySearchSort | None = None,
+            order: SearchOrder | None = None,
+        ) -> RepositorySearchPage:
+            if self.interrupt:
+                raise KeyboardInterrupt()
+            try:
+                CrawlService(factory, EmptySearcher(), plan_builder=plan).run_full_crawl()
+            except CatalogOperationBusy:
+                pass
+            else:
+                raise AssertionError("A second crawler was allowed to overlap")
+            return RepositorySearchPage(total_count=0, incomplete_results=False, repositories=())
+
+    try:
+        try:
+            CrawlService(factory, EmptySearcher(interrupt=True), plan_builder=plan).run_full_crawl()
+        except KeyboardInterrupt:
+            pass
+        else:
+            raise AssertionError("Interrupted crawler unexpectedly completed")
+        CrawlService(factory, EmptySearcher(), plan_builder=plan).run_full_crawl()
+        with factory() as session:
+            statuses = session.scalars(select(CrawlRun.status).order_by(CrawlRun.id)).all()
+            assert statuses == ["failed", "completed"]
+        print("Packaged crawler exclusion and abandoned-run recovery passed.")
+    finally:
+        engine.dispose()
+
+
 def check_containers(existing_image: str | None = None) -> None:
     """Validate and start the real production services with a small CI overlay."""
 
@@ -324,6 +386,10 @@ def check_containers(existing_image: str | None = None) -> None:
         )
         print("Rehearsing backup and restore against the disposable catalog...", flush=True)
         check_backups(run, root, project, compose)
+        run(
+            [*compose, "exec", "-T", "web", "python", "-", "--ownership"],
+            input_text=Path(__file__).read_text(encoding="utf-8"),
+        )
         succeeded = True
     finally:
         if not succeeded:
@@ -340,6 +406,8 @@ def check_containers(existing_image: str | None = None) -> None:
 if __name__ == "__main__":
     if sys.argv[1:] == ["--inside"]:
         smoke_inside_web()
+    elif sys.argv[1:] == ["--ownership"]:
+        smoke_ownership_inside_web()
     else:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("--image", help="Test an existing image instead of building one")
