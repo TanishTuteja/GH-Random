@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -100,6 +101,109 @@ def smoke_inside_web() -> None:
     for path in ("/docs", "/redoc", "/openapi.json", "/health"):
         request(path, 404)
     print("Packaged web, database discovery, Caddy proxy/headers, and public routes passed.")
+
+
+def check_backups(run, root: Path, project: str, compose: list[str]) -> None:
+    """Use only the disposable stack; never back up/restore a developer database."""
+    command = [
+        sys.executable,
+        "deployment/database_backup.py",
+        "--env-file",
+        str(root / "deployment/compose.env.example"),
+        "--project-name",
+        project,
+    ]
+    target = f"gh_random_restore_ci_{uuid.uuid4().hex[:12]}"
+    with tempfile.TemporaryDirectory(prefix="gh-random-backup-ci-") as temporary:
+        backup = Path(
+            run([*command, "backup", "--output-dir", temporary], capture=True).stdout.strip()
+        )
+        restore = [
+            *command,
+            "restore",
+            "--backup",
+            str(backup),
+            "--target-database",
+            target,
+            "--trust-backup",
+        ]
+        summary = json.loads(run(restore, capture=True).stdout)
+        assert summary["database"] == target
+        assert (
+            summary["repositories"] == summary["memberships"] == summary["active_memberships"] == 1
+        )
+        assert summary["generations"] == 1
+        assert summary["alembic_revision"]
+        print("Checking existing-target refusal (expected failure)...", flush=True)
+        assert run(restore, check=False).returncode != 0, "Must refuse an existing database"
+        # Query both the restored DB and the untouched source through the real app.
+        program = """
+import os
+from sqlalchemy.engine import make_url
+original_url = os.environ['DATABASE_URL']
+os.environ['DATABASE_URL'] = make_url(original_url).set(
+    database=os.environ['GH_RANDOM_RESTORE_DATABASE']
+).render_as_string(hide_password=False)
+from fastapi.testclient import TestClient
+from app.main import app, create_app
+from app.core.settings import get_settings
+from app.db.session import create_engine_from_url, create_session_factory
+with TestClient(app) as client:
+    result = client.get('/api/random-repository')
+    assert result.status_code == 200, result.status_code
+    assert result.json()['github_id'] == 1
+    assert 'ci/smoke-test' in client.get('/?discover=true').text
+os.environ['DATABASE_URL'] = original_url
+get_settings.cache_clear()
+engine = create_engine_from_url(original_url)
+try:
+    with TestClient(create_app(session_factory=create_session_factory(engine))) as client:
+        result = client.get('/api/random-repository')
+        assert result.status_code == 200
+        assert result.json()['github_id'] == 1
+finally:
+    engine.dispose()
+print('Restored catalog discovery passed; source catalog remains usable.')
+"""
+        run(
+            [
+                *compose,
+                "exec",
+                "-T",
+                "--env",
+                f"GH_RANDOM_RESTORE_DATABASE={target}",
+                "web",
+                "python",
+                "-",
+            ],
+            input_text=program,
+        )
+        with (backup / "database.dump").open("ab") as archive:
+            archive.write(b"deliberate-integrity-test")
+        corrupt_target = target + "_bad"
+        corrupt = [*restore]
+        corrupt[corrupt.index(target)] = corrupt_target
+        print("Checking corrupt-backup refusal (expected failure)...", flush=True)
+        assert run(corrupt, check=False).returncode != 0, "Must reject a corrupt backup"
+        # Confirm rejection happened before CREATE DATABASE, not just during restore.
+        result = run(
+            [
+                *compose,
+                "exec",
+                "-T",
+                "database",
+                "sh",
+                "-eu",
+                "-c",
+                'psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" -X -A -t '
+                '-v ON_ERROR_STOP=1 --command "$1"',
+                "sh",
+                f"SELECT count(*) FROM pg_database WHERE datname='{corrupt_target}'",
+            ],
+            capture=True,
+        )
+        assert result.stdout.strip() == "0"
+    print("Backup, new-database restore, discovery, and failure guards passed.", flush=True)
 
 
 def check_containers(existing_image: str | None = None) -> None:
@@ -218,6 +322,8 @@ def check_containers(existing_image: str | None = None) -> None:
             [*compose, "exec", "-T", "web", "python", "-", "--inside"],
             input_text=Path(__file__).read_text(encoding="utf-8"),
         )
+        print("Rehearsing backup and restore against the disposable catalog...", flush=True)
+        check_backups(run, root, project, compose)
         succeeded = True
     finally:
         if not succeeded:

@@ -4,8 +4,11 @@
 .codex/
 
 .env
+*.env
 *.pem
 *.key
+backups/
+*.dump
 
 .venv/
 venv/

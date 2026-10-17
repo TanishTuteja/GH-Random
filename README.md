@@ -297,8 +297,8 @@ advance forward and must not be rewritten.
 
 ~~~powershell
 pytest
-ruff format --check app tests alembic .github/scripts
-ruff check app tests alembic .github/scripts
+ruff format --check app tests alembic .github/scripts deployment
+ruff check app tests alembic .github/scripts deployment
 pyright
 ~~~
 
@@ -312,7 +312,7 @@ failure retention, random filtering, the API, and the rendered start page.
 pull requests and pushes to `main`, and can also be started from GitHub's Actions
 tab. It runs three independent jobs on Ubuntu with Python 3.12:
 
-- `Python checks`: Ruff formatting/linting (including Alembic and CI scripts)
+- `Python checks`: Ruff formatting/linting (including Alembic, CI, and deployment scripts)
   and Pyright.
 - `PostgreSQL tests`: the complete test suite against a fresh PostgreSQL 17
   service, followed by `alembic upgrade head` and `alembic check` to verify the
@@ -322,7 +322,10 @@ tab. It runs three independent jobs on Ubuntu with Python 3.12:
   check schema drift and the hardened crawler's local status command, then test
   the packaged web app through Caddy. Verify empty/seeded catalog discovery,
   proxy headers, the non-root runtime, exclusion of dev/build packages, and
-  disabled documentation/health routes. No live crawl or GitHub key is needed.
+  disabled documentation/health routes. Rehearse a real dump/restore into a new
+  database, compare schema/catalog counts, verify discovery against the restored
+  copy, and reject corrupt archives/existing targets. No live crawl or GitHub key
+  is needed.
 
 CI installs the pinned uv tool and creates its virtual environment from
 `uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.
@@ -356,6 +359,86 @@ issuance/renewal still needs deployment verification.
 On failure, the script prints service status/logs. It cleans up its own test
 containers, volumes, networks, and image on exit, preserving development and
 production data. CI runs the same check on an ARM64 runner to match the VM.
+
+### Database backup and restore rehearsal
+
+`deployment/database_backup.py` runs on the **host** using Python 3.12's standard
+library and Docker Compose. It uses `pg_dump`/`pg_restore` from the running
+database container, not an extra database service or host PostgreSQL install.
+The Compose env file and project are explicit; passwords remain inside the
+container rather than appearing in host commands or backup metadata.
+
+On the Linux VM, from the matching release directory, create a private backup
+directory and take a snapshot:
+
+~~~sh
+sudo install -d -m 0700 /var/backups/gh-random
+sudo python3 deployment/database_backup.py --env-file /etc/gh-random/compose.env backup --output-dir /var/backups/gh-random
+~~~
+
+The command prints the completed backup directory. It contains a compressed
+custom-format `database.dump` and `manifest.json` with its size, SHA-256, source
+database, PostgreSQL version, and completion time. On Linux, directories must
+belong to the current user with no group/other access; new directories/files
+use `0700`/`0600`. Dump/manifest writes are synced before an atomic rename marks
+the backup complete. A failed/interrupted backup remains `.partial-*` and is
+never accepted as complete. Inspect and remove such partials deliberately;
+there is no automatic backup pruning yet.
+
+The dump is a consistent database snapshot even during ordinary writes. Counts
+are checked on restore, not recorded with a separate live query that might race
+the dump. This does not replace migration/crawler coordination or a deployment
+lock. See PostgreSQL's [pg_dump documentation](https://www.postgresql.org/docs/17/app-pgdump.html).
+
+Rehearse restoring a **trusted** completed backup into a new database, replacing
+the example timestamp/suffix with the directory printed above:
+
+~~~sh
+sudo python3 deployment/database_backup.py --env-file /etc/gh-random/compose.env restore --backup /var/backups/gh-random/gh-random-20261017T000000Z-012345abcdef --target-database gh_random_restore_rehearsal --trust-backup
+~~~
+
+Restore checks private paths, completeness, size/checksum, archive readability,
+and PostgreSQL major-version agreement **before** creating the target. The name
+must start with `gh_random_restore_`; the live database and every existing target
+are refused. Restoration uses an empty `template0` database and one transaction,
+without `--clean`, drops, or automatic migration downgrades. The command reports
+the Alembic revision, table counts, active memberships, and running crawl rows.
+A database without the application schema/revision is not certified as a usable
+catalog restore. CI additionally checks the restored copy through the app/API.
+
+The restored database remains available for inspection; this tool never deletes
+it, overwrites production, or switches the app to it. On failure it may remain
+empty, partially inspected, or restored but unverified. Diagnose before retrying
+with another name; never resolve an existing-target error by dropping a live DB.
+`--timeout-seconds` defaults to 1,800 per PostgreSQL command. A Docker client
+timeout does not guarantee its in-container process stopped: inspect activity
+before any manual cleanup. Interrupted crawl rows may also exist in a snapshot;
+their safe recovery and promotion of a restored DB are separate deployment work.
+
+Only restore dumps from a source you trust: PostgreSQL dumps can execute code,
+and a matching checksum is not proof of authorship. The archive excludes cluster
+roles/passwords, host configuration, GitHub keys, and Caddy certificates; preserve
+those separately through secure recovery procedures. Restore applies the current
+database user as owner and omits grants. Cross-major upgrades and untrusted imports
+are intentionally outside this rehearsal tool. See [pg_restore's security warning](https://www.postgresql.org/docs/17/app-pgrestore.html).
+
+For a manual development backup in PowerShell, with the development database up:
+
+~~~powershell
+python deployment/database_backup.py --compose-file compose.yaml --env-file .env backup --output-dir backups
+~~~
+
+Use the same `--compose-file compose.yaml --env-file .env` options for a local
+restore rehearsal. Windows users must secure the backup folder using Windows
+ACLs; this tool enforces POSIX ownership/modes only on Linux. Never commit or
+upload plaintext backups. `backups/`, `*.dump`, and real `*.env` files are ignored
+by Git and the Docker build context; keep production backups outside the repo.
+
+These are local, **unencrypted** snapshots, not a complete production backup
+system. Scheduling, retention, off-VM encryption/upload, failure/staleness alerts,
+recovery-point/recovery-time targets, and VM-loss restore tests remain deployment
+TODOs. No timer is installed or enabled by these commands. Do not delete older
+backups or rely on VM-local storage alone before off-site recovery is verified.
 
 ### Change workflow
 

@@ -16,11 +16,15 @@ venv/
 
 # Local configuration
 .env
+*.env
 *.pem
 crawl.log
 crawl-error.log
 web.log
 web-error.log
+# Database archives contain catalog data; keep operational backups outside Git.
+backups/
+*.dump
 
 # Editors and operating systems
 .vscode/
