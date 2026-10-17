@@ -36,6 +36,10 @@ SHA = re.compile(r"[0-9a-f]{40}")
 TAG = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
 
 
+class DeploymentInterrupted(RuntimeError):
+    """A shutdown request that subprocess/selectors cannot retry as EINTR."""
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -664,7 +668,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     def interrupt(signum, frame) -> None:
-        raise InterruptedError("Deployment interrupted")
+        raise DeploymentInterrupted("Deployment interrupted")
 
     signal.signal(signal.SIGTERM, interrupt)
     try:

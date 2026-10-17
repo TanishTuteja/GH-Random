@@ -301,7 +301,9 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
                 lambda item: item.get("id") != previous and item.get("status") == "running"
             )
             if operation == "stop":
+                stop_started = time.monotonic()
                 run(["sudo", "systemctl", "stop", unit_name])
+                assert time.monotonic() - stop_started < 15, "SIGTERM cleanup was not prompt"
             elif operation == "kill":
                 run(["sudo", "systemctl", "kill", "--kill-whom=main", "--signal=KILL", unit_name])
             deadline = time.monotonic() + 60
@@ -328,6 +330,7 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
         raise
     finally:
         run(["sudo", "systemctl", "stop", timer_name, unit_name], check=False)
+        run(["sudo", "systemctl", "clean", "--what=state", timer_name], check=False)
         run(["sudo", "systemctl", "reset-failed", unit_name], check=False)
         for path in installed:
             run(["sudo", "unlink", str(path)], check=False)

@@ -244,6 +244,10 @@ def test_kernel_lock_excludes_a_second_deployer_without_stale_file_lockout(
         pass
 
 
+def test_deployment_signal_exception_is_not_retryable_io(deploy_tools: ModuleType) -> None:
+    assert not issubclass(deploy_tools.DeploymentInterrupted, OSError)
+
+
 def test_edited_or_incomplete_release_files_are_rejected(
     deploy_tools: ModuleType, tmp_path: Path
 ) -> None:

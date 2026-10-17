@@ -505,3 +505,9 @@ No actual VM installation, live crawl or schedule change is made here. Alert
 delivery, missing-success monitoring, off-site backups and real reboot/live-key
 acceptance remain pending rather than implied by observable failure states.
 
+Native CI exposed a real signal-handling trap: raising builtin InterruptedError
+from SIGTERM can be swallowed by selectors/subprocess as retryable EINTR. Use a
+dedicated non-OSError exception in both crawler and deployment controllers;
+assert prompt actual service stop, not merely eventual 90-second forced cleanup.
+The independent ExecStopPost path still provides a fallback after SIGKILL.
+

@@ -103,7 +103,7 @@ def worker(supervisor: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPat
             if behavior["error"] == "timeout":
                 raise subprocess.TimeoutExpired("docker wait", timeout)
             if behavior["error"] == "interrupt":
-                raise InterruptedError("interrupted")
+                raise supervisor.SupervisorInterrupted("interrupted")
             return behavior["exit"] + "\n", ""
 
         def wait(self, *, timeout):
@@ -194,6 +194,10 @@ def test_stop_post_will_not_kill_a_successor_invocation(
     monkeypatch.setattr(supervisor.signal, "signal", lambda *args: None)
     monkeypatch.setattr(supervisor, "cleanup", lambda value: pytest.fail("killed successor"))
     assert supervisor.main() == 0
+
+
+def test_signal_exception_cannot_be_swallowed_as_retryable_io(supervisor: ModuleType) -> None:
+    assert not issubclass(supervisor.SupervisorInterrupted, OSError)
 
 
 @pytest.mark.parametrize("matching", [True, False])

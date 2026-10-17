@@ -24,6 +24,10 @@ OWNER_LABEL = "io.gh-random.scheduled-crawl"
 PROJECT_LABEL = "io.gh-random.project"
 
 
+class SupervisorInterrupted(RuntimeError):
+    """Not OSError/EINTR: selectors must not swallow the shutdown request."""
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -237,7 +241,7 @@ def supervise(arguments: argparse.Namespace) -> int:
                 record["status"] = "timed_out"
                 result = 124
             return result
-        except (KeyboardInterrupt, InterruptedError):
+        except (KeyboardInterrupt, SupervisorInterrupted):
             record["status"] = "interrupted"
             return 143
         except Exception as error:
@@ -282,7 +286,7 @@ def main() -> int:
     require(arguments.state_dir.is_absolute(), "State directory must be absolute")
 
     def interrupt(signum, frame):
-        raise InterruptedError("Crawler supervisor interrupted")
+        raise SupervisorInterrupted("Crawler supervisor interrupted")
 
     signal.signal(signal.SIGTERM, interrupt)
     try:
