@@ -227,6 +227,8 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
     with smtp_server(cert, key) as mailbox:
         config = json.loads((ROOT / "deployment/alerts.json.example").read_text())
         config.update(
+            disk_paths=[],  # Host capacity is not a deterministic fixture property.
+            tls_host=None,  # Never contact a public hostname in native scheduler CI.
             smtp_host="127.0.0.1",
             smtp_port=mailbox.server_address[1],
             smtp_username="",
