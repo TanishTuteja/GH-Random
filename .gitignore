@@ -19,6 +19,7 @@ venv/
 *.env
 /deployment/alerts.json
 /deployment/backup.json
+pgadmin-password.txt
 *.age
 *.pem
 crawl.log

@@ -9,6 +9,10 @@
 *.key
 backups/
 *.dump
+*.age
+deployment/alerts.json
+deployment/backup.json
+pgadmin-password.txt
 
 .venv/
 venv/
