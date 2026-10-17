@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from app.core.settings import get_settings
 from app.db import Base
+from app.db.operations import exclusive_catalog_operation
 from app.db.session import create_engine_from_url
 
 config = context.config
@@ -34,7 +35,7 @@ def run_migrations_online() -> None:
     connectable = create_engine_from_url(get_settings().database_url)
 
     try:
-        with connectable.connect() as connection:
+        with connectable.connect() as connection, exclusive_catalog_operation(connection):
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
