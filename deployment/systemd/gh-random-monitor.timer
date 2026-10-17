@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GH Random success age and pending emails hourly
+
+[Timer]
+OnCalendar=*-*-* *:15:00 UTC
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=0
+Unit=gh-random-monitor.service
+
+[Install]
+WantedBy=timers.target

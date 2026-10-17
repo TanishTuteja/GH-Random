@@ -194,6 +194,61 @@ print('Normal successor recovered abandoned rows without --resume.')
 
 
 def native_units(args, launcher, bootstrap, environment, mode, record, wait_for, no_child):
+    from smtp_fixture import smtp_server
+
+    workspace = args.state_dir.parent
+    cert, key = workspace / "smtp-cert.pem", workspace / "smtp-key.pem"
+    # Disposable self-signed loopback certificate; no provider or live mail.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=DNS:localhost,IP:127.0.0.1",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+        ],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    cert.chmod(0o600)
+    key.chmod(0o600)
+    with smtp_server(cert, key) as mailbox:
+        config = json.loads((ROOT / "deployment/alerts.json.example").read_text())
+        config.update(
+            smtp_host="127.0.0.1",
+            smtp_port=mailbox.server_address[1],
+            smtp_username="",
+            smtp_password_file="",
+            smtp_ca_file=str(cert),
+            state_dir=str(workspace / "alerts"),
+            deployment_state_dir=str(args.state_dir),
+            crawler_unit=args.project_name + ".service",
+            monitor_unit=args.project_name + "-monitor.service",
+        )
+        (workspace / "alerts").mkdir(mode=0o700)
+        path = workspace / "alerts.json"
+        path.write_text(json.dumps(config), encoding="utf-8")
+        path.chmod(0o600)
+        _native_units(
+            args, launcher, bootstrap, environment, mode, record, wait_for, no_child, mailbox, path
+        )
+
+
+def _native_units(
+    args, launcher, bootstrap, environment, mode, record, wait_for, no_child, mailbox, alerts_config
+):
     import grp
     import pwd
 
@@ -222,6 +277,7 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
     source = source.replace("User=root", f"User={pwd.getpwuid(os.getuid()).pw_name}")
     source = source.replace("Group=root", f"Group={grp.getgrgid(os.getgid()).gr_name}")
     source = source.replace("gh-random-crawler", args.project_name)
+    source = source.replace("gh-random-alert@", args.project_name + "-alert@")
     if environment.get("LD_LIBRARY_PATH"):
         # setup-python's toolcache interpreter may need its shared-library path;
         # systemd does not inherit the caller's shell environment automatically.
@@ -264,11 +320,62 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
     timer_source = timer_source.replace("00,06,12,18:00:00 UTC", "*:*:0/5 UTC")
     timer_file = workspace / timer_name
     timer_file.write_text(timer_source, encoding="utf-8")
-    installed = [Path("/run/systemd/system") / unit_name, Path("/run/systemd/system") / timer_name]
+    notifier = workspace / "installed-notifications.py"
+    shutil.copyfile(ROOT / "deployment/notifications.py", notifier)
+    monitor_name = args.project_name + "-monitor.service"
+    monitor_timer = args.project_name + "-monitor.timer"
+    alert_template = args.project_name + "-alert@.service"
+    alert_instance = args.project_name + "-alert@" + unit_name + ".service"
+    monitor_alert_instance = args.project_name + "-alert@" + monitor_name + ".service"
+    sources = [service_file, timer_file]
+    for filename, destination, command in (
+        (
+            "gh-random-alert@.service",
+            alert_template,
+            [
+                sys.executable,
+                str(notifier),
+                "unit-failure",
+                "--config",
+                str(alerts_config),
+                "--unit",
+                "%i",
+            ],
+        ),
+        (
+            "gh-random-monitor.service",
+            monitor_name,
+            [sys.executable, str(notifier), "monitor", "--config", str(alerts_config)],
+        ),
+    ):
+        policy = (ROOT / "deployment/systemd" / filename).read_text()
+        policy = policy.replace("User=root", f"User={pwd.getpwuid(os.getuid()).pw_name}")
+        policy = policy.replace("Group=root", f"Group={grp.getgrgid(os.getgid()).gr_name}")
+        policy = policy.replace("gh-random-alert@", args.project_name + "-alert@")
+        policy = re.sub(r"(?m)^StateDirectory(?:Mode)?=.*\n", "", policy)
+        policy = re.sub(
+            r"(?m)^ReadWritePaths=.*$", f"ReadWritePaths={workspace / 'alerts'}", policy
+        )
+        policy = re.sub(r"(?m)^ExecStart=.*$", "ExecStart=" + shlex.join(command), policy)
+        if environment.get("LD_LIBRARY_PATH"):
+            policy = policy.replace(
+                "UMask=0077",
+                "UMask=0077\nEnvironment=LD_LIBRARY_PATH=" + environment["LD_LIBRARY_PATH"],
+            )
+        path = workspace / destination
+        path.write_text(policy, encoding="utf-8")
+        sources.append(path)
+    monitor_policy = (ROOT / "deployment/systemd/gh-random-monitor.timer").read_text()
+    assert "OnCalendar=*-*-* *:15:00 UTC" in monitor_policy
+    monitor_policy = monitor_policy.replace("gh-random-monitor.service", monitor_name)
+    path = workspace / monitor_timer
+    path.write_text(monitor_policy, encoding="utf-8")
+    sources.append(path)
+    installed = [Path("/run/systemd/system") / path.name for path in sources]
     try:
-        for src, dest in zip((service_file, timer_file), installed, strict=True):
+        for src, dest in zip(sources, installed, strict=True):
             run(["sudo", "install", "-m", "0644", str(src), str(dest)])
-        run(["sudo", "systemd-analyze", "verify", str(installed[0]), str(installed[1])])
+        run(["sudo", "systemd-analyze", "verify", *map(str, installed)])
         run(["sudo", "systemctl", "daemon-reload"])
         print("Checking real timer failure followed by a successful next tick...", flush=True)
         old = record()["id"]
@@ -281,6 +388,9 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
                 and item.get("cleanup_complete")
             )
         )
+        mailbox.wait_for_messages(1)
+        assert b"operation:crawl" in mailbox.messages[0]
+        assert b"ci-only-password" not in mailbox.messages[0]
         mode("success")
         succeeded = wait_for(
             lambda item: (
@@ -291,6 +401,9 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
         )
         run(["sudo", "systemctl", "stop", timer_name])
         no_child(succeeded)
+        run(["sudo", "systemctl", "start", monitor_name])
+        mailbox.wait_for_messages(2)
+        assert b"recovered" in mailbox.messages[1]
 
         for operation in ("stop", "kill", "watchdog"):
             print(f"Checking real systemd {operation} container cleanup...", flush=True)
@@ -320,7 +433,11 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
         mode("success")
         run(["sudo", "systemctl", "start", unit_name])
         wait_for(lambda item: item.get("status") == "succeeded" and item.get("cleanup_complete"))
-        print("Native systemd timer retry, stop, SIGKILL fallback and watchdog passed.", flush=True)
+        run(["sudo", "systemctl", "start", monitor_name])
+        print(
+            "Native timer retry, stop, SIGKILL/watchdog and TLS failure/recovery email passed.",
+            flush=True,
+        )
     except BaseException:
         print(
             run(
@@ -329,9 +446,32 @@ def native_units(args, launcher, bootstrap, environment, mode, record, wait_for,
         )
         raise
     finally:
-        run(["sudo", "systemctl", "stop", timer_name, unit_name], check=False)
+        run(
+            [
+                "sudo",
+                "systemctl",
+                "stop",
+                timer_name,
+                unit_name,
+                monitor_name,
+                alert_instance,
+                monitor_alert_instance,
+            ],
+            check=False,
+        )
         run(["sudo", "systemctl", "clean", "--what=state", timer_name], check=False)
-        run(["sudo", "systemctl", "reset-failed", unit_name], check=False)
+        run(
+            [
+                "sudo",
+                "systemctl",
+                "reset-failed",
+                unit_name,
+                monitor_name,
+                alert_instance,
+                monitor_alert_instance,
+            ],
+            check=False,
+        )
         for path in installed:
             run(["sudo", "unlink", str(path)], check=False)
         run(["sudo", "systemctl", "daemon-reload"], check=False)

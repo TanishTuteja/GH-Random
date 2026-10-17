@@ -1,0 +1,32 @@
+[Unit]
+Description=GH Random failure email for %i
+Wants=network-online.target
+After=network-online.target
+# Intentionally no OnFailure/Restart: a broken mailer must not recurse.
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+StateDirectory=gh-random/alerts
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/gh-random/notifications.py unit-failure --config /etc/gh-random/alerts.json --unit %i
+TimeoutStartSec=75s
+Restart=no
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+InaccessiblePaths=-/run/docker.sock -/etc/gh-random/github-app-private-key.pem -/etc/gh-random/postgres.env -/etc/gh-random/app.env -/etc/gh-random/crawler.env -/etc/gh-random/compose.env
+ReadWritePaths=/var/lib/gh-random/alerts
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal

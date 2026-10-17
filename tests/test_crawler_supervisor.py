@@ -137,6 +137,19 @@ def test_tracks_real_container_exit_and_launches_normal_crawl(
     assert "--resume" not in launch and "--no-deps" in launch and "--rm" not in launch
     assert launch[launch.index("--pull") + 1] == "never"
     assert len(cleanup) == 1 and cleanup[0]["container_id"] == "c" * 64
+    success = args.state_dir / "crawler-success.json"
+    assert success.exists() == (expected == 0)
+    if expected == 0:
+        assert json.loads(success.read_text()) == record
+
+
+def test_later_failure_preserves_last_success_watermark(supervisor: ModuleType, worker) -> None:
+    args, behavior, commands, cleanup = worker
+    assert supervisor.supervise(args) == 0
+    success = (args.state_dir / "crawler-success.json").read_text()
+    behavior["exit"] = "1"
+    assert supervisor.supervise(args) == 1
+    assert (args.state_dir / "crawler-success.json").read_text() == success
 
 
 @pytest.mark.parametrize(

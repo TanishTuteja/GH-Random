@@ -545,3 +545,40 @@ host policy, never silently change it during deploy. Docker/journal rotation doe
 not solve backup/deployment-state retention or disk/staleness alerts; keep those
 items pending.
 
+## 2026-10-17 — TLS email alerts independent of crawler availability
+
+Use a standalone Python stdlib SMTP notifier installed with host systemd policy,
+not application dependencies or a persistent mail/crawler container. Require
+verified TLS (implicit TLS or mandatory STARTTLS); private root-owned JSON holds
+nonpublic configuration and references a separate private SMTP credential file.
+Never pass the credential on a command line, emit provider replies in public
+errors, email raw logs or attach app/database/GitHub secrets to messages. Keep
+live provider/account setup and inbox acceptance explicit; CI sends only to a
+loopback SMTP fixture using an ephemeral test certificate.
+
+Use templated systemd OnFailure handlers rather than sending mail inside the
+crawler's ownership/cleanup path. This covers preflight failure and supervisor
+SIGKILL/watchdog failure without delaying the next six-hour slot. Prefer systemd
+251+ MONITOR_* snapshots to identify the original invocation, not mutable current
+unit state. Failure of the notifier cannot recursively alert/restart itself.
+Deployment email is an explicit --alerts-config option, prevalidated before
+mutation, executed after ownership release in a child with a 60-second bound;
+mail failure never changes the recorded deployment outcome.
+
+Maintain private atomic JSON state under its own kernel lock. Persist pending
+delivery before SMTP, mark it accepted only after all recipients are accepted,
+and let the hourly monitor retry; never promise exactly-once or inbox delivery.
+Default to six-hour incident reminders, 12-hour crawl-success age and (future
+daily backups) 36-hour backup-success age. These are documented configurable
+initial policies. A later success sends recovery only after a delivered failure;
+never let an older success erase a newer preflight failure. Preserve a separate
+crawler success watermark only after child success and completed cleanup, even
+when later runs fail. Missing first success gets an initial policy-length grace
+period. Monitor at UTC :15 (IST :45), with one persistent catch-up.
+
+Backup monitoring remains opt-in until its scheduled worker/success watermark is
+implemented. A host-local monitor cannot observe its own missing power/network
+or a dead mail provider. Independent external uptime/heartbeat monitoring and
+real SMTP tests remain launch acceptance tasks, not silently marked complete.
+Host script/unit upgrades stay explicit and ship in the matching release bundle.
+

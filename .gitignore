@@ -17,6 +17,7 @@ venv/
 # Local configuration
 .env
 *.env
+/deployment/alerts.json
 *.pem
 crawl.log
 crawl-error.log

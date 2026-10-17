@@ -30,6 +30,7 @@ CRITICAL_FILES = {
     "Caddyfile",
     "deployment/deploy.py",
     "deployment/database_backup.py",
+    "deployment/notifications.py",
 }
 IMAGE = re.compile(r"ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+@sha256:[0-9a-f]{64}")
 SHA = re.compile(r"[0-9a-f]{40}")
@@ -313,6 +314,7 @@ class Deployment:
         }
         self.log: Any = None
         self.compose: list[str] = []
+        self.attempt_record: dict[str, Any] = {}
 
     def run(self, command: list[str], *, capture: bool = False, check: bool = True) -> str:
         result = subprocess.run(
@@ -535,6 +537,7 @@ class Deployment:
                 "previous": previous,
             }
             record_file = state / f"{identifier}.json"
+            self.attempt_record = record
             with private_file(state / f"{identifier}.log") as self.log:
 
                 def phase(name: str) -> None:
@@ -687,14 +690,22 @@ def main() -> None:
     parser.add_argument("--bootstrap", action="store_true")
     parser.add_argument("--allow-loopback-http", action="store_true")
     parser.add_argument("--confirm-schema-compatible", action="store_true")
+    parser.add_argument(
+        "--alerts-config", type=Path, help="Private SMTP config; required for production alerts"
+    )
     arguments = parser.parse_args()
 
     def interrupt(signum, frame) -> None:
         raise DeploymentInterrupted("Deployment interrupted")
 
     signal.signal(signal.SIGTERM, interrupt)
+    deployment = Deployment(arguments)
     try:
-        result = Deployment(arguments).execute()
+        if arguments.alerts_config is not None:
+            from notifications import load_config
+
+            load_config(arguments.alerts_config)  # Validate before any deployment mutation.
+        result = deployment.execute()
         print(f"Deployment successful: {result['tag']} {result['image']}")
     except (Exception, KeyboardInterrupt) as error:
         print(f"Deployment failed ({type(error).__name__}): {error}", file=sys.stderr)
@@ -703,7 +714,15 @@ def main() -> None:
             "Inspect the private journal/log.",
             file=sys.stderr,
         )
+        if arguments.alerts_config is not None:
+            from notifications import notify_deployment
+
+            notify_deployment(arguments.alerts_config, deployment.attempt_record, failed=True)
         raise SystemExit(1) from None
+    if arguments.alerts_config is not None:
+        from notifications import notify_deployment
+
+        notify_deployment(arguments.alerts_config, result, failed=False)
 
 
 if __name__ == "__main__":

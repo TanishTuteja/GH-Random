@@ -268,6 +268,8 @@ def supervise(arguments: argparse.Namespace) -> int:
                             process.wait(timeout=5)
                 record["finished_at"] = datetime.now(timezone.utc).isoformat()
                 atomic_json(previous_file, record)
+                if record["status"] == "succeeded" and record["cleanup_complete"]:
+                    atomic_json(state / "crawler-success.json", record)
                 print(
                     f"Scheduled crawl {identifier}: {record['status']} "
                     f"cleanup={record['cleanup_complete']}",
