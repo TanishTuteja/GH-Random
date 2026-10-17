@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "archive_dir": "/var/backups/gh-random/encrypted",
+  "recipients_file": "/etc/gh-random/backup-recipients.txt",
+  "age_binary": "/usr/local/lib/gh-random/age-tools/age",
+  "oci_binary": "/usr/local/bin/oci",
+  "retention_days": 7,
+  "keep_copies": 2,
+  "timeout_seconds": 900,
+  "max_archive_bytes": 536870912,
+  "offsite": {
+    "namespace": "replace-with-storage-namespace",
+    "bucket": "replace-with-backup-bucket",
+    "prefix": "gh-random/backups/"
+  }
+}

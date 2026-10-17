@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
 import json
 from pathlib import Path
@@ -246,6 +247,56 @@ def test_kernel_lock_excludes_a_second_deployer_without_stale_file_lockout(
 
 def test_deployment_signal_exception_is_not_retryable_io(deploy_tools: ModuleType) -> None:
     assert not issubclass(deploy_tools.DeploymentInterrupted, OSError)
+
+
+def test_encrypted_backup_readback_precedes_ddl_and_failure_stops_migration(setup, monkeypatch):
+    args, metadata, events, behavior, implementation = setup
+    archive = importlib.import_module("backup_archive")
+    instance = implementation(args)
+    instance.backup_config = {
+        "archive_dir": str(args.backup_dir),
+        "recipients_file": "/private/recipients",
+        "age_binary": "/private/age",
+        "timeout_seconds": 10,
+    }
+    monkeypatch.setattr(
+        archive,
+        "seal",
+        lambda *args, **kwargs: events.append("encrypt") or Path("/private/encrypted"),
+    )
+
+    def upload(*args):
+        events.append("readback")
+        if behavior["failure"] == "readback":
+            raise RuntimeError("upload verification failed")
+        return {"sha256": "verified"}
+
+    monkeypatch.setattr(archive, "upload", upload)
+    instance.execute()
+    assert events.index("encrypt") < events.index("readback") < events.index("migrate")
+    events.clear()
+    behavior["failure"] = "readback"
+    with pytest.raises(RuntimeError):
+        instance.execute()
+    assert "migrate" not in events and "restart_web" not in events
+
+
+def test_coordinator_idle_budget_does_not_change_sql_statement_timeout(monkeypatch):
+    import sys
+
+    from app import deployment
+
+    observed = []
+    monkeypatch.setattr(
+        sys, "argv", ["coordinator", "--timeout-seconds", "11", "--idle-timeout-seconds", "60"]
+    )
+    monkeypatch.setattr(
+        deployment,
+        "coordinate",
+        lambda timeout, *, idle_timeout: observed.append((timeout, idle_timeout)),
+    )
+    assert deployment.main() == 0
+    assert observed == [(11, 60)]
 
 
 def test_edited_or_incomplete_release_files_are_rejected(
