@@ -1,0 +1,45 @@
+# Explicit opt-in overlay: never include this in normal web/deploy commands.
+services:
+  pgadmin:
+    profiles: [admin]
+    image: dpage/pgadmin4:9.18@sha256:c332c5f6dfba995d9ebc4af261d93506d6876085d712eaaa3defc8dd1a3f26de
+    user: "5050:5050"
+    init: true
+    restart: "no"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: "0.5"
+    mem_limit: 512m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${GH_RANDOM_PGADMIN_EMAIL:?Set the private pgAdmin login email.}
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/secrets/pgadmin-password
+      PGADMIN_DISABLE_POSTFIX: "1"
+      PGADMIN_LISTEN_PORT: "5050"
+    ports:
+      - "127.0.0.1:${GH_RANDOM_PGADMIN_PORT:-5050}:5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - type: bind
+        source: ${GH_RANDOM_PGADMIN_PASSWORD_FILE:?Set the private pgAdmin password file.}
+        target: /run/secrets/pgadmin-password
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      database:
+        condition: service_healthy
+    # Docker cannot publish a port from an internal-only network. Keep a
+    # separate access bridge; loopback host binding remains mandatory.
+    networks: [backend, admin_access]
+
+volumes:
+  pgadmin_data:
+
+networks:
+  admin_access:
