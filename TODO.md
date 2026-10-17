@@ -153,10 +153,12 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   optional host-wide journald limits example and operator commands.
 - [ ] Install/verify the journald policy on the VM. Monitor disk use, backup age,
   last successful crawl, and TLS expiry/renewal failures.
-- [ ] Document recovery from stuck crawls, failed migrations, full disks, revoked
+- [x] Document recovery from stuck crawls, failed migrations, full disks, revoked
   GitHub credentials, and complete VM loss/replacement.
-- [ ] Define host updates/reboots, secret rotation, and image cleanup. Measure
-  initial resource limits on the actual VM; preserve data and rollback images.
+- [x] Define host updates/reboots, secret rotation, and image cleanup in
+  deployment/OPERATIONS.md; preserve data, backup keys and rollback images.
+- [ ] Measure initial resource limits, disk growth and recovery targets on the
+  actual VM; rehearse the documented incidents and reboot recovery there.
 
 ### 7. GitHub Actions and releases
 

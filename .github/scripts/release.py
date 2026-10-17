@@ -39,6 +39,7 @@ DEPLOYMENT_FILES = (
     "deployment/BACKUPS.md",
     "deployment/systemd/gh-random-backup.service",
     "deployment/systemd/gh-random-backup.timer",
+    "deployment/OPERATIONS.md",
     "deployment/alerts.json.example",
     "deployment/systemd/gh-random-alert@.service",
     "deployment/systemd/gh-random-monitor.service",
