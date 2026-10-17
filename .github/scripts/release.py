@@ -29,6 +29,7 @@ DEPLOYMENT_FILES = (
     "deployment/crawler.env.example",
     "deployment/caddy.env.example",
     "deployment/database_backup.py",
+    "deployment/deploy.py",
     "README.md",
     "LICENSE",
 )
@@ -155,6 +156,10 @@ def bundle_release(root: Path, output: Path, metadata: dict[str, Any], digest: s
     compose, count = re.subn(r"(?m)^GH_RANDOM_IMAGE=.*$", f"GH_RANDOM_IMAGE={image}", compose)
     require(count == 1, "Expected exactly one GH_RANDOM_IMAGE in the deployment template")
     files["deployment/compose.env.example"] = compose.encode("utf-8")
+    metadata["deployment_format"] = 1
+    metadata["deployment_files"] = {
+        name: hashlib.sha256(data).hexdigest() for name, data in files.items()
+    }
     files["release.json"] = (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode()
     output.mkdir(parents=True, exist_ok=False)
     (output / "release.json").write_bytes(files["release.json"])

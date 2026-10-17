@@ -32,6 +32,17 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations against the configured database."""
 
+    supplied = config.attributes.get("catalog_connection")
+    if supplied is not None:
+        check = config.attributes.get("catalog_ownership_check")
+        if not callable(check):
+            raise RuntimeError("A supplied migration connection requires catalog ownership")
+        context.configure(connection=supplied, target_metadata=target_metadata, compare_type=True)
+        with context.begin_transaction():
+            check()
+            context.run_migrations()
+        return
+
     connectable = create_engine_from_url(get_settings().database_url)
 
     try:

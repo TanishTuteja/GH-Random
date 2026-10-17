@@ -395,3 +395,60 @@ Full deployment serialization, backup-before-migration workflow, timer control,
 Docker child termination, timeouts/alerts, and systemd scheduling remain the next
 operational increments; this PR does not claim those are implemented.
 
+## 2026-10-17 — Host-side deployment with a fenced database coordinator
+
+Implement the actual deploy script now, using Python's standard library on the
+host. It consumes a trusted, extracted release with immutable GHCR digest,
+source/revision/version labels, platform, and per-file hashes. Add the deploy
+script to the allowlisted release archive. Never combine moving-main deployment
+files with a release image. Manifest hashes detect accidental edits/mixing, not
+publisher authenticity; trusting/verifying the release precedes executing code.
+
+Use a kernel file lock for deploy attempts sharing a state directory and the
+existing database mutex across the whole backup/migrate/restart/smoke/promotion
+sequence. A private stdio-only agent in the migration container holds the owning
+connection; Alembic receives that exact guarded connection, avoiding a second
+backend deadlock or a gap between backup and DDL. No Docker socket, HTTP endpoint,
+additional service, or production secret is introduced. All callers must retain
+the cooperative lock protocol. Readers remain available; crawling fails promptly
+on contention. Do not disable timers, so errors cannot leave them disabled.
+Systemd scheduling/child termination is still a separate increment.
+
+Preflight validates credentials agree across all roles/database, private external
+configuration paths, image metadata/architecture, and Caddy. Cache release images
+before DDL. First boot needs explicit --bootstrap; refuse stopped/mismatched
+existing databases rather than recreating them. DB/proxy image or credential
+changes require reviewed maintenance, not incidental app upgrades. Base image
+digest pins remain TODOs. Recreate web/Caddy with brief downtime, then verify both
+the public page and database-backed discovery over verified HTTPS, no redirects.
+
+Take a checked local snapshot before every migration/rollback, including an empty
+bootstrap DB. Keep private per-attempt logs/journals and current/previous verified
+release pointers. Publish state only after smoke success. Preserve the actual
+previous runtime image separately because a failed prior smoke can leave runtime
+ahead of the verified pointer. Env and pointer updates are individually atomic,
+not transactional together: document interrupted promotion and cleanup-after-
+promotion ambiguity. Never pretend current.json always describes failed runtime.
+
+No automatic rollback, schema downgrade, restore, or volume removal. Explicit
+rollback requires the previous verified release, identical schema head, and
+operator compatibility acknowledgement. Equal revisions do not establish data
+or code compatibility; schema-changing rollback needs a reviewed recovery plan.
+Rerunning apply is the recovery for many transient failures, not blind restoration.
+
+Terminate the exact named coordinator container on normal exit/SIGINT/SIGTERM;
+controller EOF or idle expiry and statement timeouts bound abandoned work after
+host failure. Ownership checks fence subsequent operations after lock loss.
+Daemon/network failure still requires inspecting the recorded container/session;
+do not use elapsed age to evict another live owner. Failure alerts remain TODO.
+
+Rehearse the actual CLI with local-only synthetic digest images: bootstrap,
+redeploy, DB exclusion across migration commits, EOF/idle recovery, deliberately
+failed transactional DDL, failed HTTP smoke, and explicit same-schema rollback.
+Assert catalogs, schema, backups, and verified pointers remain consistent. Run in
+native ARM64 container CI with the containerd image store; fixtures never publish
+to GHCR, use real keys, call GitHub, or touch a developer database. Unit tests
+cover preflight/state-machine guards and Alembic's stdout protocol isolation.
+Production OCI/TLS, first release publication, off-site backups, scheduling,
+alerts, and GitHub deployment recording remain intentionally unfinished.
+

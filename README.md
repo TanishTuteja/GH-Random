@@ -374,6 +374,10 @@ tab. It runs three independent jobs on Ubuntu with Python 3.12:
   copy, and reject corrupt archives/existing targets. No live crawl or GitHub key
   is needed. Also verify packaged crawler exclusion and abandoned-run recovery
   using an interrupted fake one-combination crawl with no GitHub API traffic.
+    Then exercise the actual deploy CLI against synthetic, locally built digest
+    releases: bootstrap/redeploy, migration exclusion, controller EOF/idle expiry,
+    failed DDL, failed public smoke tests, and same-schema rollback with preserved
+    catalog data. Nothing is published to GHCR during these rehearsals.
 
 CI installs the pinned uv tool and creates its virtual environment from
 `uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.
@@ -536,21 +540,17 @@ application image by immutable digest and absolute paths to the role-specific
 environment files. The application and crawler use `database`, the Compose
 service name, as the PostgreSQL hostname in `DATABASE_URL`, not `127.0.0.1`.
 
-From a checked-out release directory on the VM, the manual first-deployment
-sequence will be:
+Deploy from the extracted, verified release archive using the script described
+below. Starting web never starts a crawl. After deployment, run the initial
+crawler explicitly from that same release directory:
 
 ~~~sh
-docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml pull
-docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml --profile migrate run --rm migrate
-docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml up --detach database web caddy
 docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml --profile crawler run --rm crawler
 ~~~
 
 Run the initial crawler to completion before announcing the site, then replace
-the final manual crawler command with the planned six-hour systemd timer. A
-future deployment script will automate the pull, backup, migration, restart,
-and smoke-test steps; do not treat the commands above as a substitute for a
-tested backup and restore procedure.
+the manual crawler command with the planned six-hour systemd timer. Scheduling,
+alerts, and off-site backup setup remain separate deployment work.
 
 ### Creating a release (not deploying it)
 
@@ -596,7 +596,9 @@ workflow then:
 5. Attaches `image-digest.txt`, `release.json`, `SHA256SUMS`, and
    `gh-random-v0.1.0-deployment.tar.gz` only after successful smoke tests.
    The archive contains matching Compose/Caddy files, safe configuration
-   templates, README/license, and release metadata. Its Compose template already
+   templates, deploy/backup scripts, README/license, and release metadata.
+   Metadata includes SHA-256 hashes for every packaged deployment file.
+   Its Compose template already
    pins the released image digest; no production secrets are included.
 
 A release is ready to deploy only when this workflow is green **and** all four
@@ -631,12 +633,126 @@ cat release.json
 Use the archive's files rather than a checkout of moving `main`. Review/copy
 `deployment/compose.env.example` to `/etc/gh-random/compose.env`, retaining the
 exact digest and existing secret paths; never overwrite live role credentials
-with example passwords. Use the manual commands above until tested deployment
-automation exists. The Python dependencies are locked, but the Python,
+with example passwords. Use the deployment script below. The Python dependencies
+are locked, but the Python,
 PostgreSQL, and Caddy base-image digest pins are still tracked separately.
 
-For rollback, retain each release directory and its previous digest. Select
-the previous release's deployment files and image only if its code is compatible
-with the current database schema. Do not automatically downgrade Alembic or
-delete database volumes. Rehearsed backup/restore and deployment/rollback scripts
-remain prerequisites for the first production launch.
+### Deploying a verified release
+
+The host needs Python 3.12+, Docker Engine, and Docker Compose. No host virtualenv,
+PostgreSQL client, or Docker socket mounted into application containers is needed.
+Use a trusted release's script, not one downloaded separately from moving `main`.
+Keep each extracted release at a stable, version-specific absolute path, for
+example `/opt/gh-random/releases/v0.1.0`. Retain previous directories/images for
+rollback; do not edit packaged files. The script checks their manifest hashes,
+image digest, source/revision/version labels, Linux architecture, configuration
+paths, database credentials, and Caddy configuration before migrations.
+Hashes detect accidental edits/mixed releases, not malicious publishers: verify
+the trusted GitHub release and outer `SHA256SUMS` before executing any script.
+
+Create `/etc/gh-random` with mode `0700`, and its configuration files and PEM with
+mode `0600`, owned by the deployment user (root in these examples). All five
+configuration/key paths in `compose.env` must be explicit absolute paths outside
+the release directory; no variable interpolation in these path values. Use one
+flat `GH_RANDOM_IMAGE=...` assignment. Secret-bearing files stay separate from
+immutable release files. Keep using the same project name (`gh-random` by default),
+state directory, and backup directory across every release.
+
+First deployment, after configuring DNS/firewalls and the private env files:
+
+~~~sh
+sudo python3 /opt/gh-random/releases/v0.1.0/deployment/deploy.py apply \
+  --env-file /etc/gh-random/compose.env \
+  --state-dir /var/lib/gh-random/deployments \
+  --backup-dir /var/backups/gh-random \
+  --url https://YOUR_HOSTNAME \
+  --bootstrap
+~~~
+
+The default release directory is the directory containing the script. For later
+releases, invoke the new release's script with the same paths and **omit
+`--bootstrap`**. It performs this sequence:
+
+1. Take a host kernel lock; validate the release/configuration and cache the exact
+   image digest. A busy deployment fails promptly rather than waiting indefinitely.
+2. Start PostgreSQL only for an explicitly bootstrapped first deployment. Existing
+   DB/proxy image or database-credential changes require separate maintenance;
+   normal deployment never recreates the database or deletes volumes.
+3. Hold the database's catalog ownership lock across backup, migration, web/proxy
+   restart, public smoke tests, and recording the verified release. An existing
+   crawler/migration owner causes a clear failure **before backup or DDL**. New
+   cooperating crawlers/migrations are excluded while deployment holds ownership.
+4. Create a consistent, checked local backup **before** running Alembic. Even
+   bootstrap takes an empty-database backup before creating the schema.
+5. Run `alembic upgrade head` once on the owning connection and check schema drift.
+   Recreate web/Caddy using the cached release/configuration; expect brief downtime.
+6. Check HTTPS `/` and `/?discover=true`, including a database-backed page render.
+   TLS verification stays enabled and redirects are refused. Empty catalogs are
+   valid before the first crawl; no new public health endpoint is added.
+7. Atomically update only `GH_RANDOM_IMAGE` in the external Compose env and write
+   `current.json` with the verified version, commit, digest, release directory,
+   and previous verified release. Release catalog ownership on exit.
+
+The state directory contains private per-attempt JSON journals and command logs,
+plus `current.json` and a persistent `deploy.lock` file. The latter is a kernel
+lock, not a stale-file sentinel: **do not delete it** to force another deployment.
+Logs/backups can contain sensitive data. Protect them; no automated pruning,
+encryption, off-site upload, or alert delivery is installed by this script.
+
+`--timeout-seconds` defaults to 1,800 per operational command/controller idle
+period and bounds migration statements. `--smoke-timeout-seconds` defaults to 60.
+Increase deliberately for slow backups/migrations. SIGINT/SIGTERM and normal
+failures clean up the uniquely named coordinator container, releasing its DB
+lease. If the host is killed abruptly, controller EOF/idle expiry releases it;
+PostgreSQL must detect a lost connection before another owner proceeds. Inspect
+the recorded container and database activity after a daemon/network outage.
+Never kill an unknown crawler or remove its lock just because it is old.
+
+A failed attempt exits nonzero and records its last phase. There is **no automatic
+image rollback, schema downgrade, database restore, or volume deletion**. A failure
+before web restart leaves web untouched; a later smoke failure can leave the new
+image running while `current.json` still identifies the last verified release.
+Inspect the journal, actual containers, schema, and backup before recovery. After
+fixing a transient/configuration issue, rerun `apply` against the intended release;
+Alembic respects already-applied revisions. Failed migrations may need a reviewed
+forward fix. Do not assume every future migration is transactionally reversible.
+
+The Compose env and state pointer are individually atomic, not one cross-file
+transaction. If interrupted during `record_success`, reconcile both with runtime.
+A cleanup error at `release_catalog` can report failure after a verified release
+has already been recorded; it does not mean the previous image is still running.
+Future scheduled crawls should fail/retry on contention; this script does not
+disable a timer, so there is no disabled schedule to forget to re-enable.
+
+### Explicit image rollback
+
+Keep the current script/release directory, state directory, and the previous
+release's files and image. Review compatibility, then run:
+
+~~~sh
+sudo python3 /opt/gh-random/releases/v0.1.1/deployment/deploy.py rollback \
+  --env-file /etc/gh-random/compose.env \
+  --state-dir /var/lib/gh-random/deployments \
+  --backup-dir /var/backups/gh-random \
+  --url https://YOUR_HOSTNAME \
+  --confirm-schema-compatible
+~~~
+
+Rollback selects `current.json`'s previous **verified** release and its matching
+Compose/Caddy files. It takes another backup, requires the live Alembic revision
+to equal the old image's head, and never runs upgrade/downgrade. Equal revisions
+are necessary but not sufficient for application/data compatibility, hence the
+explicit acknowledgement. Schema-changing rollback is refused; use a reviewed
+forward fix or separate restore/recovery plan. After a failed deployment, the last
+good release is still `current.json` itself: re-applying that release may be the
+appropriate recovery, rather than going back one additional verified release.
+
+Local/ARM64 CI rehearses these paths with synthetic releases and disposable data.
+The rehearsal uses Docker's containerd image store for local digest-addressable
+images and a loopback-only HTTP Caddy port; production defaults remain HTTPS.
+CI configures that store using Docker's
+[documented Actions setup](https://docs.docker.com/build/ci/github-actions/multi-platform/).
+`--allow-loopback-http` is solely for explicit literal-loopback rehearsals, never
+a way to disable TLS for a public hostname. Live OCI/DNS/TLS, first GHCR publish,
+off-site recovery, timer installation, and GitHub deployment recording still
+require their separate acceptance checks.

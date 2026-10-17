@@ -390,6 +390,8 @@ def check_containers(existing_image: str | None = None) -> None:
             [*compose, "exec", "-T", "web", "python", "-", "--ownership"],
             input_text=Path(__file__).read_text(encoding="utf-8"),
         )
+        print("Rehearsing the deployment CLI and failure recovery...", flush=True)
+        run([sys.executable, ".github/scripts/check_deployments.py", "--image", image])
         succeeded = True
     finally:
         if not succeeded:
