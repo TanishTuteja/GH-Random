@@ -452,3 +452,56 @@ cover preflight/state-machine guards and Alembic's stdout protocol isolation.
 Production OCI/TLS, first release publication, off-site backups, scheduling,
 alerts, and GitHub deployment recording remain intentionally unfinished.
 
+## 2026-10-17 — Six-hour timer and managed crawler lifecycle
+
+Use a host systemd Type=exec service plus a persistent UTC calendar timer at
+00/06/12/18:00 (05:30/11:30/17:30/23:30 IST). Keep normal full crawls, never
+implicit --resume. One catch-up after downtime avoids replaying a backlog.
+The next slot remains independent of a prior failure; no Restart retry loop.
+Rotation advances only on success, so four distinct orderings daily depend on
+four successful crawls. Cap crawl execution at five hours, with an independent
+5h5m systemd fallback and 90-second stop budget. These are initial safety-policy
+choices requiring production duration measurements, not guarantees of completion.
+
+Install a small stdlib bootstrap from a trusted release in a stable host location.
+It dispatches through private current.json and verifies the selected release's
+worker hash/identity; actual orchestration executes that release's worker and
+matching tools/Compose, not the old installed code or moving main. Include the
+bootstrap, worker (same file) and units in release hashes/assets. Unit/bootstrap
+policy installation/upgrades remain explicit operator steps, not automatic
+privileged configuration changes hidden inside app deployment.
+
+Hold the shared kernel deployment lock for the whole managed run, then retain
+existing DB session exclusion inside CrawlService for manual/other callers.
+Validate the cached image and role configuration; refuse an incomplete/mismatched
+running web/DB instead of starting/pulling services or running old code after a
+failed deployment. Manual crawls remain protected by their database mutex.
+
+Launch a detached, init-enabled, restart=no Docker child with a unique name and
+invocation/project labels. Persist its intended identity before creation, record
+the actual ID/exit status, stream bounded Docker logs to journald, and remove only
+that owned child. Stop it with Docker TERM/grace/KILL on timeout/signals; stopping
+the CLI alone does not stop a daemon-managed container. ExecStopPost independently
+cleans it after a killed supervisor; check INVOCATION_ID so an old stop cannot
+target a successor. After a dead supervisor releases its host lock, clean only
+its recorded managed orphan before the next run. No age-based takeover of manual
+DB owners. Preserve failure/cleanup status when the daemon is unavailable, never
+certify that container disappearance has been proven merely because inspection
+failed. Existing DB recovery handles abandoned rows on the next normal crawl.
+
+Service hardening is defense in depth: root-owned key access and Docker control
+are root-equivalent. Keep an empty per-unit runtime Docker config, no host secrets
+in unit arguments, no permanent crawler container, no timer enablement in deploy
+or test commands. Document timer vs service stop and deliberate upgrade steps.
+
+Extend offline state/dispatch/identity tests and disposable Docker rehearsals
+using derived synthetic images whose fake CLI never authenticates or calls GitHub.
+Native ARM64 CI additionally exercises temporary real systemd units, preserving
+the production sandbox but scaling schedule/runtime and fixture paths/user. Check
+timer failure followed by a successful next tick, stop/SIGKILL/watchdog cleanup,
+and subsequent normal recovery without resume. Remove only uniquely named test
+units/stacks. Windows checks the matched worker; POSIX exec/systemd is Linux CI.
+No actual VM installation, live crawl or schedule change is made here. Alert
+delivery, missing-success monitoring, off-site backups and real reboot/live-key
+acceptance remain pending rather than implied by observable failure states.
+
