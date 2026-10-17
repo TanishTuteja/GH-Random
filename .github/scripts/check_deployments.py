@@ -22,7 +22,7 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def rehearse(base_image: str) -> None:
+def rehearse(base_image: str, *, systemd: bool = False) -> None:
     project = f"gh-random-deploy-ci-{uuid.uuid4().hex[:12]}"
     repository = f"ci/{project}"
     environment = {
@@ -48,7 +48,28 @@ def rehearse(base_image: str) -> None:
 
     images = []
     compose = []
-    with tempfile.TemporaryDirectory(prefix=project) as temporary:
+    # Native unit tests need paths outside /home, /tmp and /var/tmp so the real
+    # ProtectHome/PrivateTmp settings remain enabled. Only disposable CI uses /opt.
+    if systemd:
+        assert os.environ.get("GITHUB_ACTIONS") == "true" and sys.platform == "linux"
+        ci_parent = Path("/opt/gh-random-scheduler-ci")
+        run(
+            [
+                "sudo",
+                "install",
+                "-d",
+                "-o",
+                str(os.getuid()),
+                "-g",
+                str(os.getgid()),
+                "-m",
+                "0700",
+                str(ci_parent),
+            ]
+        )
+    else:
+        ci_parent = None
+    with tempfile.TemporaryDirectory(prefix=project, dir=ci_parent) as temporary:
         workspace = Path(temporary)
         workspace.chmod(0o700)
         config = workspace / "config"
@@ -100,6 +121,11 @@ def rehearse(base_image: str) -> None:
                 build = workspace / f"build-{index}"
                 build.mkdir()
                 dockerfile = "ARG BASE=python:3.12-slim\nFROM ${BASE}\n"
+                if index != 2:
+                    shutil.copyfile(
+                        ROOT / ".github/fixtures/scheduled_crawl.py", build / "fake_cli.py"
+                    )
+                    dockerfile += "COPY fake_cli.py /app/app/cli.py\n"
                 if index == 2:
                     dockerfile += "COPY bad_migration.py /app/alembic/versions/bad_migration.py\n"
                     (build / "bad_migration.py").write_text(
@@ -144,6 +170,7 @@ def rehearse(base_image: str) -> None:
                     "Caddyfile",
                     "deployment/deploy.py",
                     "deployment/database_backup.py",
+                    "deployment/crawler.py",
                 ):
                     shutil.copyfile(ROOT / filename, release / filename)
                 composition = (release / "compose.production.yaml").read_text()
@@ -395,6 +422,23 @@ def rehearse(base_image: str) -> None:
                 "and data preservation passed.",
                 flush=True,
             )
+            run(
+                [
+                    sys.executable,
+                    ".github/scripts/check_scheduler.py",
+                    "--release-dir",
+                    str(releases[0][0]),
+                    "--state-dir",
+                    str(state),
+                    "--env-file",
+                    str(env_file),
+                    "--crawler-env",
+                    str(crawler_env),
+                    "--project-name",
+                    project,
+                    *(["--systemd"] if systemd else []),
+                ]
+            )
         except BaseException:
             # These logs contain only disposable fixture values, never real configuration.
             for log in sorted((workspace / "state").glob("*.log")):
@@ -422,4 +466,6 @@ def rehearse(base_image: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True, help="Existing local production image")
-    rehearse(parser.parse_args().image)
+    parser.add_argument("--systemd", action="store_true", help="CI-only native unit rehearsal")
+    arguments = parser.parse_args()
+    rehearse(arguments.image, systemd=arguments.systemd)
