@@ -3,6 +3,17 @@
 This file records decisions that materially shape the MVP, including choices made
 autonomously while completing the project.
 
+## 2026-10-18 — Ship explicit incident and maintenance runbooks
+
+Include deployment/OPERATIONS.md in the immutable release bundle, alongside the
+scripts it describes. Prefer ownership-checked managed crawler cleanup, forward
+migration repair and new-database-only recovery to blanket process termination,
+schema stamping, volume deletion or automatic data rollback. Image cleanup is an
+explicit exact-image operation preserving current/previous/recovery artifacts;
+host updates, unit upgrades and secret rotation remain deliberate maintenance.
+The documented procedures do not establish live VM capacity, provider delivery,
+DNS or recovery-time acceptance. Keep those manual checks separate and unchecked.
+
 ## 2026-09-29 — Single application repository
 
 The FastAPI server and offline crawler share this repository, Python environment,

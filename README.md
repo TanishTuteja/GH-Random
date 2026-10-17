@@ -990,6 +990,11 @@ public launch; no external monitor or live SMTP provider is provisioned here.
 
 ### Production runtime hardening and maintenance
 
+Use the [production operations runbook](deployment/OPERATIONS.md) for incident
+triage, stuck crawls, failed migrations, disk pressure, credential rotation,
+host maintenance, safe image cleanup and VM replacement. Its live acceptance
+steps still need the real deployment; no production host is configured by CI.
+
 Set `APP_ALLOWED_HOSTS` in the private **app.env** to a JSON list of exact,
 lowercase public hostnames, for example `APP_ALLOWED_HOSTS=["example.com"]`.
 Do not include a scheme, path, port, or wildcard. Match `GH_RANDOM_DOMAIN` in
