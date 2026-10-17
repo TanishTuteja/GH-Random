@@ -117,5 +117,11 @@ jobs:
         with:
           python-version-file: .python-version
 
+      - name: Enable local digest-addressable images for deployment rehearsals
+        uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4
+        with:
+          daemon-config: |
+            {"features": {"containerd-snapshotter": true}}
+
       - name: Validate and smoke-test production containers
         run: python .github/scripts/check_containers.py

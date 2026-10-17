@@ -48,25 +48,29 @@ GitHub settings remain pending unless explicitly marked complete.
 
 ### 4. Deployment and migrations
 
-- [x] Document manual first-deployment commands in `README.md`.
+- [x] Document scripted first deployment and explicit crawler commands in `README.md`.
 - [x] Squash pre-production migrations into one baseline. Preserve migration
   history from the first production deployment onward.
-- [ ] Add a repeatable deploy script: validate configuration, acquire a lock,
+- [x] Add a repeatable deploy script: validate configuration, acquire a lock,
   back up PostgreSQL, pull the exact image digest, run `alembic upgrade head`
   once, update web, smoke-test `/`, and report the result.
-- [ ] Coordinate deployments with crawls: wait for an existing run or fail
-  clearly, block new runs during deployment, and restore scheduling even on
-  deployment failure. Avoid changing schema underneath a running crawler.
-  Database exclusion for crawls and online Alembic is implemented; whole-deploy
-  orchestration and timer/child-process coordination still need implementation.
-- [ ] Deploy Compose, Caddy, scripts, and systemd files from the same release
+- [x] Hold database ownership across backup/migration/restart/smoke/promotion;
+  fail promptly on an existing crawl/migration, exclude new cooperating owners,
+  and release the named coordinator on normal failure/interruption. Do not
+  disable scheduling. EOF/idle expiry handles a lost controller. Timer-specific
+  child termination and hung-run alerts remain in section 5.
+- [x] Deploy Compose, Caddy, and scripts from the same release
   revision as the image. Record version, commit, digest, and prior digest;
   never combine a release image with deployment files taken from moving `main`.
-- [ ] Define and rehearse rollback to the previous image. Never automatically
+- [ ] Include systemd files in matching release assets when implemented; bind
+  scheduled crawls to the verified deployed digest and coordinate unit changes.
+- [x] Define and rehearse same-schema rollback to the previous verified image.
+  Require explicit compatibility acknowledgement. Never automatically
   downgrade migrations; incompatible schema changes need a recovery plan.
   Preserve database volumes during normal redeployment.
-- [ ] Test scripted deployment, migration failure, and rollback using disposable
-  data before applying them to production.
+- [x] Test real scripted bootstrap/redeploy, migration failure, smoke failure,
+  controller EOF/idle cleanup, exclusion, and rollback using disposable data.
+  Keep live production acceptance separate; no production deployment performed.
 
 ### 5. Scheduled crawler and crash recovery
 
