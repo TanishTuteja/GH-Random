@@ -1,15 +1,28 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
 from app.crawler.planning import CrawlSearchWorkItem
 from app.crawler.service import CrawlService
 from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Repository
+from app.db.operations import (
+    CATALOG_LOCK_NAMESPACE,
+    CATALOG_LOCK_RESOURCE,
+    CatalogOperationBusy,
+    exclusive_catalog_operation,
+)
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
 
 STARTED_AT = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
@@ -22,8 +35,14 @@ WORK_ITEM = CrawlSearchWorkItem(
 
 
 class FakeRepositorySearcher:
-    def __init__(self, responses: list[RepositorySearchPage | Exception]) -> None:
+    def __init__(
+        self,
+        responses: list[RepositorySearchPage | Exception],
+        *,
+        on_search: Callable[[], None] | None = None,
+    ) -> None:
         self._responses = responses
+        self._on_search = on_search
         self.calls: list[tuple[str, int, int, RepositorySearchSort | None, SearchOrder | None]] = []
 
     def search_repositories(
@@ -36,6 +55,8 @@ class FakeRepositorySearcher:
         order: SearchOrder | None = None,
     ) -> RepositorySearchPage:
         self.calls.append((query, page, per_page, sort, order))
+        if self._on_search is not None:
+            self._on_search()
         response = self._responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -94,6 +115,214 @@ def _service(
         clock=lambda: current_time,
         plan_builder=_plan,
     )
+
+
+def test_second_crawler_cannot_recover_or_modify_a_live_run(
+    session_factory: sessionmaker[Session],
+) -> None:
+    contender = FakeRepositorySearcher([_page(_payload(2))])
+
+    def contend() -> None:
+        with pytest.raises(CatalogOperationBusy):
+            _service(session_factory, contender, STARTED_AT + timedelta(days=99)).run_full_crawl()
+        with session_factory() as session:
+            runs = session.scalars(select(CrawlRun)).all()
+            assert len(runs) == 1 and runs[0].status == "running"
+
+    searcher = FakeRepositorySearcher([_page(_payload(1))], on_search=contend)
+    _service(session_factory, searcher, STARTED_AT).run_full_crawl()
+    assert contender.calls == []
+
+
+def test_migration_owner_prevents_crawl_before_any_search(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        engine = session.get_bind()
+    assert isinstance(engine, Engine)
+    searcher = FakeRepositorySearcher([_page(_payload(1))])
+    with engine.connect() as connection, exclusive_catalog_operation(connection):
+        with pytest.raises(CatalogOperationBusy):
+            _service(session_factory, searcher, STARTED_AT).run_full_crawl()
+    assert searcher.calls == []
+
+
+def test_next_normal_crawl_recovers_an_interrupted_run_without_skipping_sort(
+    session_factory: sessionmaker[Session],
+) -> None:
+    first = _service(session_factory, FakeRepositorySearcher([_page(_payload(1))]), STARTED_AT)
+    first_summary = first.run_full_crawl()
+
+    def interrupt() -> None:
+        raise KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        _service(
+            session_factory,
+            FakeRepositorySearcher([_page()], on_search=interrupt),
+            STARTED_AT + timedelta(hours=1),
+        ).run_full_crawl()
+    with session_factory() as session:
+        abandoned = session.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+        assert abandoned is not None
+        abandoned_id = abandoned.id
+        active = session.get(CatalogGeneration, first_summary.generation_id)
+        assert active is not None and active.status == "active"
+    summary = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(3))]),
+        STARTED_AT + timedelta(hours=2),
+    ).run_full_crawl()
+    with session_factory() as session:
+        recovered = session.get(CrawlRun, abandoned_id)
+        assert recovered is not None and recovered.status == "failed"
+        assert recovered.error_message == "Previous crawler lost ownership before completion."
+        failed = session.get(CatalogGeneration, recovered.generation_id)
+        assert failed is not None and failed.status == "failed"
+    assert summary.ordering.sort == "stars" and summary.ordering.order == "desc"
+
+
+def test_resume_recovers_an_interrupted_run_at_its_committed_checkpoint(
+    session_factory: sessionmaker[Session],
+) -> None:
+    calls = 0
+
+    def interrupt_second_page() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise KeyboardInterrupt()
+
+    searcher = FakeRepositorySearcher(
+        [_page(_payload(1), total_count=101), _page(_payload(2))],
+        on_search=interrupt_second_page,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        _service(session_factory, searcher, STARTED_AT).run_full_crawl()
+    continuation = FakeRepositorySearcher([_page(_payload(2))])
+    summary = _service(
+        session_factory, continuation, STARTED_AT + timedelta(hours=1)
+    ).resume_full_crawl()
+    assert continuation.calls[0][1] == 2
+    assert summary.repositories_seen == summary.requests_made == 2
+    with session_factory() as session:
+        run = session.get(CrawlRun, summary.run_id)
+        assert run is not None and run.resume_count == 1
+
+
+def test_unclean_process_exit_releases_ownership_and_next_crawl_recovers(
+    session_factory: sessionmaker[Session],
+) -> None:
+    program = """
+import os, sys
+from datetime import datetime
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+from app.db.models import CatalogGeneration, CrawlRun
+from app.db.operations import exclusive_catalog_operation
+from app.db.session import create_engine_from_url
+engine = create_engine_from_url(os.environ['TEST_DATABASE_URL'])
+with engine.connect() as connection, exclusive_catalog_operation(connection):
+    with sessionmaker(bind=connection)() as session, session.begin():
+        now = datetime.fromisoformat(sys.argv[1])
+        generation = CatalogGeneration(status='staging',created_at=now)
+        session.add(generation)
+        session.flush()
+        session.add(CrawlRun(generation_id=generation.id,status='running',
+            sort_key='updated',sort_order='desc',started_at=now))
+    print(connection.scalar(text('SELECT pg_backend_pid()')), flush=True)
+    # No Python cleanup/finally handlers run, just like an abrupt process death.
+    os._exit(17)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program, STARTED_AT.isoformat()],
+        env={**os.environ},
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode == 17
+    backend_pid = int(result.stdout.strip())
+    deadline = time.monotonic() + 5
+    while True:
+        with session_factory() as session:
+            still_connected = session.scalar(
+                text("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=:pid)"),
+                {"pid": backend_pid},
+            )
+        if not still_connected:
+            break
+        assert time.monotonic() < deadline, "PostgreSQL did not release the dead client's session"
+        time.sleep(0.01)
+    with session_factory() as session:
+        abandoned = session.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+        assert abandoned is not None
+        abandoned_id = abandoned.id
+        session.execute(text("SELECT 1"))
+    _service(
+        session_factory,
+        FakeRepositorySearcher([_page(_payload(1))]),
+        STARTED_AT + timedelta(hours=1),
+    ).run_full_crawl()
+    with session_factory() as session:
+        recovered = session.get(CrawlRun, abandoned_id)
+        assert recovered is not None and recovered.status == "failed"
+
+
+def test_disconnected_old_crawler_cannot_publish_or_overwrite_successor(
+    session_factory: sessionmaker[Session],
+) -> None:
+    def replace_disconnected_owner() -> None:
+        with session_factory() as session, session.begin():
+            backend_pid = session.scalar(
+                text(
+                    "SELECT pid FROM pg_locks WHERE locktype='advisory' AND granted "
+                    "AND classid=:namespace AND objid=:resource AND objsubid=2 "
+                    "AND database=(SELECT oid FROM pg_database WHERE datname=current_database())"
+                ),
+                {"namespace": CATALOG_LOCK_NAMESPACE, "resource": CATALOG_LOCK_RESOURCE},
+            )
+            assert backend_pid is not None
+            assert session.scalar(text("SELECT pg_terminate_backend(:pid)"), {"pid": backend_pid})
+        _service(
+            session_factory,
+            FakeRepositorySearcher([_page(_payload(2))]),
+            STARTED_AT + timedelta(hours=1),
+        ).run_full_crawl()
+
+    old_searcher = FakeRepositorySearcher(
+        [_page(_payload(1))], on_search=replace_disconnected_owner
+    )
+    with pytest.raises(OperationalError):
+        _service(session_factory, old_searcher, STARTED_AT).run_full_crawl()
+    with session_factory() as session:
+        runs = session.scalars(select(CrawlRun).order_by(CrawlRun.id)).all()
+        assert len(runs) == 2
+        assert runs[0].status == "failed" and runs[1].status == "completed"
+        assert runs[0].error_message == "Previous crawler lost ownership before completion."
+        active = session.scalar(
+            select(CatalogGeneration).where(CatalogGeneration.status == "active")
+        )
+        assert active is not None and active.id == runs[1].generation_id
+        assert session.scalars(select(Repository.github_id)).all() == [2]
+
+
+def test_recovery_refuses_inconsistent_state_instead_of_demoting_active_catalog(
+    session_factory: sessionmaker[Session],
+) -> None:
+    summary = _service(
+        session_factory, FakeRepositorySearcher([_page(_payload(1))]), STARTED_AT
+    ).run_full_crawl()
+    with session_factory() as session, session.begin():
+        run = session.get(CrawlRun, summary.run_id)
+        assert run is not None
+        run.status = "running"
+    with pytest.raises(RuntimeError, match="inconsistent generation"):
+        _service(
+            session_factory, FakeRepositorySearcher([_page()]), STARTED_AT + timedelta(hours=1)
+        ).run_full_crawl()
+    with session_factory() as session:
+        active = session.get(CatalogGeneration, summary.generation_id)
+        assert active is not None and active.status == "active"
 
 
 def test_successful_crawls_publish_staging_and_rotate_sort_order(

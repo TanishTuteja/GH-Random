@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl_parser.add_argument(
         "--resume",
         action="store_true",
-        help="Continue the latest failed crawl from its durable page checkpoint.",
+        help="Continue the latest failed/interrupted crawl from its durable page checkpoint.",
     )
     subcommands.add_parser(
         "status",

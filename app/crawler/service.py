@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol, cast
 
 from sqlalchemy import delete, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.filters import PUSHED_BUCKETS, STAR_BUCKETS, SUPPORTED_LANGUAGES
@@ -23,6 +24,7 @@ from app.crawler.planning import (
     fingerprint_crawl_search_plan,
 )
 from app.db.models import CatalogGeneration, CrawlRun, GenerationRepository, Repository
+from app.db.operations import exclusive_catalog_operation
 from app.github.search import RepositorySearchPage, RepositorySearchSort, SearchOrder
 
 DEFAULT_STALE_MEMBERSHIP_RETENTION = timedelta(days=3)
@@ -102,12 +104,62 @@ class CrawlService:
     def run_full_crawl(self) -> CrawlSummary:
         """Run all configured queries and publish only if every request succeeds."""
 
+        return self._run_exclusively(resume=False)
+
+    def resume_full_crawl(self) -> CrawlSummary:
+        """Continue the latest failed/interrupted crawl under exclusive ownership."""
+
+        return self._run_exclusively(resume=True)
+
+    def _run_exclusively(self, *, resume: bool) -> CrawlSummary:
+        engine = self._session_factory.kw.get("bind")
+        if not isinstance(engine, Engine):
+            raise ValueError("CrawlService requires an engine-bound session factory")
+        with engine.connect() as connection, exclusive_catalog_operation(connection):
+            # All reads, checkpoints, publication, recovery, and failure recording
+            # use the physical DB connection that owns the lock. Do not mutate the
+            # public service's factory: simultaneous callers must contend normally.
+            worker = CrawlService(
+                sessionmaker(bind=connection, autoflush=False, expire_on_commit=False),
+                self._searcher,
+                clock=self._clock,
+                plan_builder=self._plan_builder,
+                logger=self._logger,
+                stale_membership_retention=self._stale_membership_retention,
+                generation_retention=self._generation_retention,
+            )
+            worker._recover_abandoned_crawls()
+            return worker._resume_full_crawl() if resume else worker._run_full_crawl()
+
+    def _recover_abandoned_crawls(self) -> None:
+        """Exclusive ownership proves no cooperating previous crawler is alive."""
+
+        recovered_ids: list[int] = []
+        with self._session_factory() as session, session.begin():
+            abandoned = session.scalars(select(CrawlRun).where(CrawlRun.status == "running")).all()
+            for run in abandoned:
+                generation = session.get(CatalogGeneration, run.generation_id)
+                if generation is None or generation.status != "staging":
+                    raise RuntimeError(
+                        "Running crawl has inconsistent generation state; inspect it"
+                    )
+                run.status = "failed"
+                run.completed_at = self._current_time()
+                run.error_message = "Previous crawler lost ownership before completion."
+                generation.status = "failed"
+                recovered_ids.append(run.id)
+        for run_id in recovered_ids:
+            self._logger.warning("Recovered abandoned crawl run %s", run_id)
+
+    def _run_full_crawl(self) -> CrawlSummary:
+        """Execute a new plan after ownership and recovery are established."""
+
         started_at = self._current_time()
         work_items = self._plan_builder(started_at)
         continuation = self._begin_crawl(started_at, work_items)
         return self._continue_crawl(continuation, work_items, seen_repository_ids=set())
 
-    def resume_full_crawl(self) -> CrawlSummary:
+    def _resume_full_crawl(self) -> CrawlSummary:
         """Continue the latest failed crawl from its persisted next-page cursor."""
 
         continuation = self._load_resumable_crawl()
@@ -197,12 +249,17 @@ class CrawlService:
                 completed_at=self._current_time(),
             )
         except Exception as error:
-            self._fail_crawl(
-                continuation.run_id,
-                continuation.generation_id,
-                error,
-                failed_at=self._current_time(),
-            )
+            try:
+                self._fail_crawl(
+                    continuation.run_id,
+                    continuation.generation_id,
+                    error,
+                    failed_at=self._current_time(),
+                )
+            except Exception:
+                self._logger.error(
+                    "Could not record crawl failure; the next exclusive owner will recover it"
+                )
             raise
 
     def _default_plan(self, reference_time: datetime) -> tuple[CrawlSearchWorkItem, ...]:
