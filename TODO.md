@@ -1,10 +1,15 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-17. `[x]` means implemented and
+Reviewed against the repository on 2026-10-18. `[x]` means implemented and
 locally verified; `[ ]` means work remains. Local checks do not establish that
 something works in production. OCI resources have not been verified. The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
 GitHub settings remain pending unless explicitly marked complete.
+
+Current execution scope: complete every non-OCI item. OCI provisioning, private
+VM configuration and acceptance that requires the live OCI stack remain manual
+and unchecked. GitHub administration/releases and repository implementation are
+still in scope; they must not be treated as OCI prerequisites to avoid doing them.
 
 ## Repository implementation
 
@@ -119,9 +124,14 @@ GitHub settings remain pending unless explicitly marked complete.
   ARM64 CI: verify schema/catalog counts, restored app/API discovery, source
   preservation, and corrupt-archive/existing-target refusal. This is not a
   production/off-site recovery rehearsal.
-- [ ] Add backup scheduling and retention. Define frequency, acceptable data
-  loss, and restore time; do not prune the only usable recovery copy. Local
-  snapshots are currently unencrypted and no timer is installed.
+- [x] Add daily encrypted backups at 05:15 UTC, seven-day/minimum-two-verified-copy
+  local retention, a 24-hour RPO and an initial one-hour restore target after host
+  readiness. Document unmeasured production limits in deployment/BACKUPS.md.
+- [x] Add age sealing/offline recovery and OCI CLI upload plus full SHA-256
+  read-back verification; test real encryption/restoration and a local object-store
+  contract without an OCI account. Support encrypted pre-deploy backups too.
+- [ ] Install/configure the backup timer, offline identities and scoped OCI
+  instance-principal permissions on the VM; verify real capacity/runtime/quotas.
 - [ ] Upload encrypted backups to OCI Object Storage with scoped permissions and
   lifecycle rules. Keep recovery material accessible if the VM is lost.
 - [ ] Restore an encrypted off-site production backup into a separate database
@@ -132,7 +142,9 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Implement TLS-only email for crawler/systemd and opt-in deployment failures,
   with safe identifiers/diagnostic commands, not raw logs or secrets. Test actual
   TLS on loopback, durable retries, cooldown, recovery and non-recursive handlers.
-- [ ] Wire backup failures/success watermarks when scheduled backups are added.
+- [x] Wire backup failure email and success watermarks; refuse watermark promotion
+  on failed upload/read-back/retention/lease cleanup. A later failed run cannot
+  erase the last verified success. Explicit local-only rehearsals never count.
 - [ ] Configure the real SMTP provider/sender/recipients, confirm its free quota,
   and test inbox delivery and failure/recovery without relying solely on SMTP acceptance.
 - [ ] Add monitoring outside the VM for site downtime and missing successful

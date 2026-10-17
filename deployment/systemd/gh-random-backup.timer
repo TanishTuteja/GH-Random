@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up GH Random daily between crawler slots (UTC)
+
+[Timer]
+OnCalendar=*-*-* 05:15:00 UTC
+Persistent=true
+AccuracySec=1s
+RandomizedDelaySec=0
+Unit=gh-random-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,36 @@
+[Unit]
+Description=GH Random encrypted daily PostgreSQL backup
+Wants=network-online.target
+Requires=docker.service
+After=network-online.target docker.service
+OnFailure=gh-random-alert@%n.service
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+Environment=DOCKER_HOST=unix:///run/docker.sock
+Environment=DOCKER_CONFIG=/run/gh-random-backup/docker
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+RuntimeDirectory=gh-random-backup
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/gh-random/backup.py run --env-file /etc/gh-random/compose.env --state-dir /var/lib/gh-random/deployments --config /etc/gh-random/backup.json
+RuntimeMaxSec=40min
+TimeoutStopSec=90s
+KillMode=control-group
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gh-random/deployments /var/backups/gh-random
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gh-random-backup
+

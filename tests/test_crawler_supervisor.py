@@ -214,13 +214,18 @@ def test_signal_exception_cannot_be_swallowed_as_retryable_io(supervisor: Module
 
 
 @pytest.mark.parametrize("matching", [True, False])
+@pytest.mark.parametrize("worker_name", ["crawler.py", "backup.py"])
 def test_bootstrap_executes_only_matching_verified_worker(
-    supervisor: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, matching: bool
+    supervisor: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    matching: bool,
+    worker_name: str,
 ) -> None:
     state = tmp_path / "state"
     release = tmp_path / "release"
     (release / "deployment").mkdir(parents=True)
-    worker = release / "deployment/crawler.py"
+    worker = release / "deployment" / worker_name
     worker.write_text("safe fixture")
     metadata = {
         "image": "immutable",
@@ -228,7 +233,7 @@ def test_bootstrap_executes_only_matching_verified_worker(
         "commit": "a" * 40,
         "deployment_format": 1,
         "deployment_files": {
-            "deployment/crawler.py": hashlib.sha256(worker.read_bytes()).hexdigest(),
+            "deployment/" + worker_name: hashlib.sha256(worker.read_bytes()).hexdigest(),
         },
     }
     (release / "release.json").write_text(json.dumps(metadata))
@@ -250,7 +255,7 @@ def test_bootstrap_executes_only_matching_verified_worker(
 
     monkeypatch.setattr(supervisor.os, "execv", execute)
     with pytest.raises(ExecCalled if matching else ValueError):
-        supervisor.dispatch(arguments)
+        supervisor.dispatch(arguments, worker_name=worker_name)
 
 
 @pytest.mark.parametrize("correct", [True, False])

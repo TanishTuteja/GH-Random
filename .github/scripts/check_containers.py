@@ -458,6 +458,7 @@ def check_containers(existing_image: str | None = None) -> None:
         )
         print("Rehearsing backup and restore against the disposable catalog...", flush=True)
         check_backups(run, root, project, compose)
+        run([sys.executable, ".github/scripts/check_encrypted_backups.py", "--", *compose])
         run(
             [*compose, "exec", "-T", "web", "python", "-", "--ownership"],
             input_text=Path(__file__).read_text(encoding="utf-8"),

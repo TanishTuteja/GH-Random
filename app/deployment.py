@@ -42,7 +42,7 @@ def respond(payload: dict[str, Any]) -> None:
     print(json.dumps(payload), flush=True)
 
 
-def coordinate(timeout: int) -> None:
+def coordinate(timeout: int, *, idle_timeout: int | None = None) -> None:
     engine = create_engine_from_url(get_settings().database_url)
     try:
         with engine.connect() as connection, exclusive_catalog_operation(connection) as check:
@@ -57,7 +57,7 @@ def coordinate(timeout: int) -> None:
             migrated = False
             while True:
                 # EOF or idle expiry also releases ownership if the host dies.
-                ready, _, _ = select.select([sys.stdin], [], [], timeout)
+                ready, _, _ = select.select([sys.stdin], [], [], idle_timeout or timeout)
                 if not ready:
                     raise TimeoutError("Deployment controller went idle")
                 line = sys.stdin.readline(1024)
@@ -92,11 +92,14 @@ def coordinate(timeout: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
+    parser.add_argument("--idle-timeout-seconds", type=int)
     arguments = parser.parse_args()
     if arguments.timeout_seconds <= 0:
         parser.error("Timeout must be positive")
+    if arguments.idle_timeout_seconds is not None and arguments.idle_timeout_seconds <= 0:
+        parser.error("Idle timeout must be positive")
     try:
-        coordinate(arguments.timeout_seconds)
+        coordinate(arguments.timeout_seconds, idle_timeout=arguments.idle_timeout_seconds)
     except Exception as error:
         # Never send SQL, credentials, or tracebacks through the host protocol.
         respond({"ok": False, "error": type(error).__name__})

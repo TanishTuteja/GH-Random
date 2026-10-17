@@ -95,7 +95,8 @@ def cleanup(record: dict[str, Any]) -> None:
     docker(["rm", identifier])
 
 
-def dispatch(arguments: argparse.Namespace) -> int:
+def dispatch(arguments: argparse.Namespace, *, worker_name: str = "crawler.py") -> int:
+    require(worker_name in {"crawler.py", "backup.py"}, "Unknown release worker")
     current = private_json(arguments.state_dir / "current.json")
     root = Path(current["release_dir"])
     require(root.is_absolute() and root.is_dir(), "Verified release directory is unavailable")
@@ -105,12 +106,12 @@ def dispatch(arguments: argparse.Namespace) -> int:
         and all(metadata.get(key) == current.get(key) for key in ("image", "tag", "commit")),
         "Verified release pointer/manifest mismatch",
     )
-    worker = root / "deployment/crawler.py"
+    worker = root / "deployment" / worker_name
     require(worker.is_file() and not worker.is_symlink(), "Missing/unsafe release supervisor")
     with worker.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     require(
-        digest == metadata.get("deployment_files", {}).get("deployment/crawler.py"),
+        digest == metadata.get("deployment_files", {}).get("deployment/" + worker_name),
         "Release supervisor hash mismatch",
     )
     os.execv(sys.executable, [sys.executable, str(worker), "worker", *sys.argv[2:]])

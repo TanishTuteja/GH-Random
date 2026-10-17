@@ -31,6 +31,8 @@ CRITICAL_FILES = {
     "deployment/deploy.py",
     "deployment/database_backup.py",
     "deployment/notifications.py",
+    "deployment/backup.py",
+    "deployment/backup_archive.py",
 }
 IMAGE = re.compile(r"ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+@sha256:[0-9a-f]{64}")
 SHA = re.compile(r"[0-9a-f]{40}")
@@ -247,6 +249,11 @@ class Coordinator:
                 "app.deployment",
                 "--timeout-seconds",
                 str(self.deployment.timeout),
+                *(
+                    ["--idle-timeout-seconds", str(self.deployment.idle_timeout)]
+                    if self.deployment.idle_timeout is not None
+                    else []
+                ),
             ],
             cwd=self.deployment.root,
             env=self.deployment.environment,
@@ -315,6 +322,8 @@ class Deployment:
         self.log: Any = None
         self.compose: list[str] = []
         self.attempt_record: dict[str, Any] = {}
+        self.backup_config: dict[str, Any] | None = None
+        self.idle_timeout: int | None = None
 
     def run(self, command: list[str], *, capture: bool = False, check: bool = True) -> str:
         result = subprocess.run(
@@ -604,11 +613,28 @@ class Deployment:
                                 "Schema-changing rollback refused; use a reviewed recovery plan",
                             )
                         phase("backup")
-                        record["backup"] = str(
-                            backup(
-                                Database(self.compose, timeout=self.timeout), self.args.backup_dir
+                        if self.backup_config is None:
+                            record["backup"] = str(
+                                backup(
+                                    Database(self.compose, timeout=self.timeout),
+                                    self.args.backup_dir,
+                                )
                             )
-                        )
+                        else:
+                            from backup_archive import seal, upload
+
+                            policy = self.backup_config
+                            sealed = seal(
+                                Database(self.compose, timeout=self.timeout),
+                                Path(policy["archive_dir"]),
+                                Path(policy["recipients_file"]),
+                                Path(policy["age_binary"]),
+                                timeout=policy["timeout_seconds"],
+                            )
+                            coordinator.request("inspect")
+                            record["backup"] = str(sealed)
+                            record["backup_offsite"] = upload(sealed, policy)
+                            coordinator.request("inspect")
                         phase("migrate")
                         if self.args.command == "apply":
                             record["schema_after"] = coordinator.request("migrate")
@@ -691,6 +717,11 @@ def main() -> None:
     parser.add_argument("--allow-loopback-http", action="store_true")
     parser.add_argument("--confirm-schema-compatible", action="store_true")
     parser.add_argument(
+        "--backup-config",
+        type=Path,
+        help="Encrypted/off-site backup policy; recommended for production",
+    )
+    parser.add_argument(
         "--alerts-config", type=Path, help="Private SMTP config; required for production alerts"
     )
     arguments = parser.parse_args()
@@ -701,6 +732,18 @@ def main() -> None:
     signal.signal(signal.SIGTERM, interrupt)
     deployment = Deployment(arguments)
     try:
+        if arguments.backup_config is not None:
+            from backup import config_from_file
+
+            deployment.backup_config = config_from_file(arguments.backup_config)
+            require(
+                arguments.backup_dir.resolve()
+                == Path(deployment.backup_config["archive_dir"]).resolve(),
+                "Backup directory must match the encrypted backup policy",
+            )
+            deployment.idle_timeout = max(
+                deployment.timeout, 4 * deployment.backup_config["timeout_seconds"] + 60
+            )
         if arguments.alerts_config is not None:
             from notifications import load_config
 
