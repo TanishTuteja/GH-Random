@@ -28,6 +28,16 @@ its container after use. Access requires SSH local forwarding through a managed
 Bastion VM session, not a direct Bastion port-forward to the VM private IP. Keep
 database credentials out of defaults and private GUI edits out of schema history.
 
+## 2026-10-18 — Resolve the newly enabled dependency security alert
+
+GitHub dependency alerts identified pytest's Unix temporary-directory issue
+GHSA-6w46-j5rx-g56g/CVE-2025-71176, fixed in pytest 9.0.3. Raise the development
+dependency floor and refresh the lockfile without upgrading runtime packages.
+Remove unused pytest-asyncio: this suite has no asynchronous tests/fixtures and
+the old plugin constraint would prevent adopting the patched pytest major.
+Pytest is not installed in the production image; this is still important for
+developer/CI environments and must not be dismissed as a false positive.
+
 ## 2026-09-29 — Single application repository
 
 The FastAPI server and offline crawler share this repository, Python environment,
