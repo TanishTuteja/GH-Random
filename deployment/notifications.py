@@ -11,7 +11,9 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import smtplib
+import socket
 import ssl
 import stat
 import subprocess
@@ -27,7 +29,20 @@ from email.utils import format_datetime, make_msgid
 from pathlib import Path
 from typing import Any
 
-FIELDS = {"id", "tag", "phase", "status", "error_type", "result", "exit_status", "invocation"}
+FIELDS = {
+    "id",
+    "tag",
+    "phase",
+    "status",
+    "error_type",
+    "result",
+    "exit_status",
+    "invocation",
+    "free_bytes",
+    "free_percent",
+    "free_inode_percent",
+    "remaining_days",
+}
 ISSUE = re.compile(r"[a-z0-9][a-z0-9_.@:-]{0,180}", re.ASCII)
 UNIT = re.compile(r"gh-random-[a-zA-Z0-9_.@-]+\.service", re.ASCII)
 
@@ -137,6 +152,16 @@ def positive(value: object, *, maximum: int) -> bool:
     return type(value) is int and 0 < value <= maximum
 
 
+def hostname(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 253
+        and all(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part) for part in value.split(".")
+        )
+    )
+
+
 def load_config(path: Path) -> dict[str, Any]:
     config = read_json(path)
     require(config.get("format") == 1, "Unsupported alerts configuration")
@@ -176,6 +201,26 @@ def load_config(path: Path) -> dict[str, Any]:
         config[field] = config.get(field, default)
         require(positive(config[field], maximum=maximum), "Invalid alert policy duration")
     require(type(config.get("monitor_backups", False)) is bool, "Invalid backup monitoring switch")
+    paths = config.setdefault("disk_paths", [])
+    require(
+        isinstance(paths, list)
+        and len(paths) <= 3
+        and all(isinstance(value, str) and Path(value).is_absolute() for value in paths),
+        "Use up to three absolute monitored filesystem paths",
+    )
+    require(len(set(paths)) == len(paths), "Duplicate monitored filesystem path")
+    for field, default, maximum in (
+        ("disk_min_free_bytes", 2 * 1024**3, 1024**5),
+        ("disk_min_free_percent", 10, 99),
+        ("disk_min_free_inode_percent", 5, 99),
+        ("tls_warn_days", 14, 90),
+    ):
+        config[field] = config.get(field, default)
+        require(positive(config[field], maximum=maximum), "Invalid host monitoring threshold")
+    if config.get("tls_host") is not None:
+        require(hostname(config["tls_host"]), "Use an exact lowercase TLS hostname, not a URL")
+    if config.get("tls_ca_file"):
+        private(Path(config["tls_ca_file"]))
     for key, default in (
         ("crawler_unit", "gh-random-crawler.service"),
         ("backup_unit", "gh-random-backup.service"),
@@ -363,6 +408,65 @@ def unit_failure(reporter: Reporter, unit: str) -> None:
     reporter.event("operation:" + category if category else "unit:" + unit, True, details)
 
 
+def tls_expiration(host: str, *, port: int = 443, ca_file: str | None = None) -> float:
+    """Verified peer/SNI certificate only; parent bounds DNS and the whole probe."""
+    context = ssl.create_default_context(cafile=ca_file)
+    with socket.create_connection((host, port), timeout=5) as connection:
+        with context.wrap_socket(connection, server_hostname=host) as secure:
+            certificate = secure.getpeercert()
+            require(bool(certificate) and "notAfter" in certificate, "Missing TLS expiration")
+            assert certificate is not None
+            return ssl.cert_time_to_seconds(str(certificate["notAfter"]))
+
+
+def monitor_host(reporter: Reporter) -> None:
+    """Local early warnings, never a substitute for an outside-VM monitor."""
+    config = reporter.config
+    for index, value in enumerate(config.get("disk_paths", [])):
+        details: dict[str, Any] = {"id": f"filesystem-{index}"}
+        try:
+            usage = shutil.disk_usage(value)
+            free_percent = 100 * usage.free / usage.total
+            details.update(free_bytes=usage.free, free_percent=round(free_percent, 2))
+            failed = (
+                usage.free < config["disk_min_free_bytes"]
+                or free_percent < config["disk_min_free_percent"]
+            )
+            statvfs = getattr(os, "statvfs", None)
+            if statvfs is not None:
+                counts = statvfs(value)
+                if counts.f_files:
+                    inodes = 100 * counts.f_favail / counts.f_files
+                    details["free_inode_percent"] = round(inodes, 2)
+                    failed = failed or inodes < config["disk_min_free_inode_percent"]
+            details["status"] = "low_disk_space" if failed else "disk_healthy"
+        except (OSError, ZeroDivisionError) as error:
+            failed = True
+            details.update(status="disk_probe_failed", error_type=type(error).__name__)
+        # Deliberately outside the probe's exception handler: mail/state failures
+        # must not be mistaken for a disk failure or an accepted delivery.
+        reporter.event(f"host:disk-{index}", failed, details)
+    host = config.get("tls_host")
+    if host:
+        command = [sys.executable, str(Path(__file__).resolve()), "probe-tls", "--probe-host", host]
+        if config.get("tls_ca_file"):
+            command += ["--probe-ca-file", config["tls_ca_file"]]
+        details = {}
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=20, check=True)
+            require(len(result.stdout) <= 100, "Invalid TLS probe output")
+            expires = json.loads(result.stdout)
+            require(type(expires) in (int, float), "Invalid TLS probe expiration")
+            remaining = datetime.fromtimestamp(expires, timezone.utc) - reporter.now()
+            details = {"remaining_days": round(remaining.total_seconds() / 86400, 2)}
+            failed = remaining <= timedelta(days=config["tls_warn_days"])
+            details["status"] = "tls_expiring" if failed else "tls_healthy"
+        except (ValueError, OSError, OverflowError, subprocess.SubprocessError) as error:
+            failed = True
+            details.update(status="tls_probe_failed", error_type=type(error).__name__)
+        reporter.event("host:tls", failed, details)
+
+
 def monitor(reporter: Reporter) -> None:
     directory = Path(reporter.config["state_dir"])
     now = reporter.now()
@@ -373,6 +477,7 @@ def monitor(reporter: Reporter) -> None:
     start = timestamp(marker["started_at"])
     state = Path(reporter.config["deployment_state_dir"])
     private(state, directory=True)
+    monitor_host(reporter)
     # Preserve the success watermark separately from the latest (possibly failed) run.
     for category, enabled, filename, hours in (
         ("crawl", True, "crawler-success.json", reporter.config["crawl_max_age_hours"]),
@@ -472,14 +577,23 @@ def notify_deployment(config_path: Path | None, record: dict[str, Any], *, faile
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("test", "event", "unit-failure", "monitor"))
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "command", choices=("test", "event", "unit-failure", "monitor", "probe-tls")
+    )
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--probe-host")
+    parser.add_argument("--probe-ca-file")
     parser.add_argument("--issue")
     parser.add_argument("--status", choices=("failure", "recovered"))
     parser.add_argument("--unit")
     parser.add_argument("--detail", action="append", default=[])
     args = parser.parse_args()
     try:
+        if args.command == "probe-tls":
+            require(hostname(args.probe_host), "Invalid TLS probe hostname")
+            print(json.dumps(tls_expiration(args.probe_host, ca_file=args.probe_ca_file)))
+            return 0
+        require(args.config is not None, "A private alerts configuration is required")
         config = load_config(args.config)
         reporter = Reporter(config)
         if args.command == "test":

@@ -988,6 +988,28 @@ The on-host timer cannot report its own powered-off VM or deliver through a dead
 mail provider. Configure that external service and prove its email delivery before
 public launch; no external monitor or live SMTP provider is provisioned here.
 
+The same hourly monitor can warn about free disk bytes, free-space percentage
+and (on Linux) free inode percentage. In private alerts.json, `disk_paths` accepts
+up to three existing **local** filesystem paths; the example checks `/`. Include
+`/var/lib/docker` and `/var/backups/gh-random` after provisioning if they use other
+mounts. Initial thresholds are 2 GiB **or** 10% free space, or 5% free inodes.
+Missing/inaccessible paths are failures, not healthy. Emails identify paths by
+their zero-based configuration index, without exposing arbitrary host paths;
+keep the order stable while handling incidents. Removing/disabling a check is
+not evidence that a previously reported incident recovered.
+
+Set `tls_host` to the exact lowercase public hostname (no scheme, port or path)
+after DNS/HTTPS works. Null disables this probe during bootstrap. It verifies
+the live port-443 certificate using SNI, hostname checks and system trust, warns
+at 14 days remaining by default, and treats certificate/connectivity/probe
+failures as incidents. The child probe bounds DNS plus handshake to 20 seconds;
+it does not trust an expired/self-signed certificate or inspect Caddy's private
+key files. Disk/TLS incidents use the same pending-delivery ledger, cooldown and
+recovery emails. These are host-local warnings, not an external uptime check,
+and low-disk alerts can themselves fail if no space remains to write state.
+Install the updated notifier from a matching release deliberately, start the
+monitor manually, and test real alerts/recovery before relying on it.
+
 ### Production runtime hardening and maintenance
 
 Use the [production operations runbook](deployment/OPERATIONS.md) for incident
