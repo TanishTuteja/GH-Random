@@ -357,6 +357,12 @@ def test_preflight_accepts_explicit_private_config_and_encoded_credentials(prefl
     assert deployment.preflight(metadata) == config
 
 
+def test_scheduler_preflight_does_not_require_a_public_smoke_url(preflight) -> None:
+    deployment, metadata, config, image = preflight
+    del deployment.args.url
+    assert deployment.preflight(metadata, check_site=False) == config
+
+
 @pytest.mark.parametrize("role", ["web", "migrate", "crawler"])
 def test_preflight_rejects_mismatching_database_credentials(preflight, role: str) -> None:
     deployment, metadata, config, image = preflight

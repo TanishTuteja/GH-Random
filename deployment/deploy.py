@@ -359,7 +359,7 @@ class Deployment:
             ]
         )
 
-    def preflight(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def preflight(self, metadata: dict[str, Any], *, check_site: bool = True) -> dict[str, Any]:
         env_file: Path = self.args.env_file
         check_private(env_file)
         require(
@@ -433,12 +433,13 @@ class Deployment:
                 "Configuration paths must be absolute regular files outside the release",
             )
             check_private(path)
-        site = services["caddy"]["environment"]["GH_RANDOM_DOMAIN"]
-        domain = urlsplit(site if "://" in site else "https://" + site).hostname
-        require(
-            domain == urlsplit(self.args.url).hostname,
-            "Smoke URL must match the configured site hostname",
-        )
+        if check_site:
+            site = services["caddy"]["environment"]["GH_RANDOM_DOMAIN"]
+            domain = urlsplit(site if "://" in site else "https://" + site).hostname
+            require(
+                domain == urlsplit(self.args.url).hostname,
+                "Smoke URL must match the configured site hostname",
+            )
         try:
             image = self.image_info(metadata["image"])
         except (ValueError, json.JSONDecodeError):
