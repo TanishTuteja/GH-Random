@@ -217,6 +217,8 @@ def test_bundle_is_allowlisted_digest_pinned_and_checksummed(
     metadata = json.loads((output / "release.json").read_text())
     assert metadata["image"] == image
     assert metadata["commit"] == SOURCE
+    assert metadata["deployment_format"] == 1
+    assert set(metadata["deployment_files"]) == set(release_tools.DEPLOYMENT_FILES)
     with tarfile.open(output / "gh-random-v0.1.0-deployment.tar.gz") as archive:
         assert set(archive.getnames()) == {*release_tools.DEPLOYMENT_FILES, "release.json"}
         template = archive.extractfile("deployment/compose.env.example")
@@ -225,6 +227,10 @@ def test_bundle_is_allowlisted_digest_pinned_and_checksummed(
         bundled_metadata = archive.extractfile("release.json")
         assert bundled_metadata is not None
         assert json.load(bundled_metadata) == metadata
+        for name, digest in metadata["deployment_files"].items():
+            member = archive.extractfile(name)
+            assert member is not None
+            assert hashlib.sha256(member.read()).hexdigest() == digest
     checksums = (output / "SHA256SUMS").read_text().splitlines()
     assert len(checksums) == 3
     for line in checksums:
