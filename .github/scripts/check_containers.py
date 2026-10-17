@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
 def smoke_inside_web() -> None:
@@ -30,11 +30,13 @@ def smoke_inside_web() -> None:
         assert importlib.util.find_spec(package) is None, f"Unexpected dev/build package: {package}"
 
     opener = build_opener(ProxyHandler({}))
+    host = os.environ.get("GH_RANDOM_SMOKE_HOST", "localhost")
+    assert host in {"localhost", "127.0.0.1"}, "Only disposable loopback sites are tested"
 
     def request(path: str, expected_status: int = 200) -> tuple[bytes, dict[str, str]]:
         try:
             response = opener.open(
-                Request(f"http://caddy{path}", headers={"Host": "localhost"}), timeout=5
+                Request(f"http://caddy{path}", headers={"Host": host}), timeout=5
             )
         except HTTPError as error:
             response = error
@@ -54,6 +56,55 @@ def smoke_inside_web() -> None:
 
     assert b"<title>GH Random</title>" in body, "Packaged template was not rendered"
     assert headers.get("X-Content-Type-Options") == "nosniff", "Caddy headers were not applied"
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    # Inspect a framework-generated redirect without adding a public debug route.
+    # Caddy must overwrite, not trust, spoofed headers from the HTTP client.
+    probe = Request(
+        "http://caddy/api/random-repository/?gh_random_proxy_probe=1",
+        headers={
+            "Host": host,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "evil.example",
+            "X-Forwarded-For": "203.0.113.99",
+        },
+    )
+    try:
+        build_opener(ProxyHandler({}), NoRedirect()).open(probe, timeout=5)
+    except HTTPError as error:
+        with error:
+            assert error.code == 307
+            assert error.headers["Location"] == (
+                f"http://{host}/api/random-repository?gh_random_proxy_probe=1"
+            )
+    else:
+        raise AssertionError("Expected canonical redirect")
+    # This private-peer probe establishes that Uvicorn actually consumes trusted
+    # proxy scheme headers; the public Caddy probe above verifies sanitization.
+    try:
+        build_opener(ProxyHandler({}), NoRedirect()).open(
+            Request(
+                "http://web:8000/api/random-repository/",
+                headers={"Host": host, "X-Forwarded-Proto": "https"},
+            ),
+            timeout=5,
+        )
+    except HTTPError as error:
+        with error:
+            assert error.code == 307
+            assert error.headers["Location"] == f"https://{host}/api/random-repository"
+    else:
+        raise AssertionError("Expected trusted-peer HTTPS redirect")
+    try:
+        opener.open(Request("http://web:8000/", headers={"Host": "evil.example"}), timeout=5)
+    except HTTPError as error:
+        with error:
+            assert error.code == 400
+    else:
+        raise AssertionError("Web accepted an untrusted Host")
     body, _ = request("/api/random-repository", 404)
     assert json.loads(body)["detail"] == "No catalogued repository matches these filters."
 
@@ -323,9 +374,15 @@ def check_containers(existing_image: str | None = None) -> None:
     try:
         print("Validating production and CI Compose configurations...", flush=True)
         run([*production, "--profile", "migrate", "--profile", "crawler", "config", "--quiet"])
-        rendered = json.loads(run([*compose, "config", "--format", "json"], capture=True).stdout)
+        rendered = json.loads(run([*all_roles, "config", "--format", "json"], capture=True).stdout)
         assert all(not s.get("ports") for s in rendered["services"].values())
         assert rendered["networks"]["backend"]["internal"] is True
+        assert rendered["networks"]["proxy"]["internal"] is True
+        assert set(rendered["services"]["web"]["networks"]) == {"proxy", "backend"}
+        for service in rendered["services"].values():
+            assert service["logging"]["options"] == {"max-size": "10m", "max-file": "3"}
+            assert service["mem_limit"] and float(service["cpus"]) > 0
+            assert service["pids_limit"] > 0
 
         if existing_image is None:
             print("Building the locked production image...", flush=True)
@@ -380,9 +437,24 @@ def check_containers(existing_image: str | None = None) -> None:
         )
         print("Starting web and Caddy for HTTP/database smoke tests...", flush=True)
         run([*compose, "up", "--detach", "--wait", "--wait-timeout", "60", "web", "caddy"])
+        for role in ("web", "caddy", "database"):
+            container = run([*compose, "ps", "--quiet", role], capture=True).stdout.strip()
+            info = json.loads(run(["docker", "inspect", container], capture=True).stdout)[0]
+            host = info["HostConfig"]
+            assert host["Memory"] > 0 and host["NanoCpus"] > 0 and host["PidsLimit"] > 0
+            assert host["LogConfig"]["Config"]["max-size"] == "10m"
+            if role != "database":
+                assert host["ReadonlyRootfs"] is True
+                assert "ALL" in host["CapDrop"]
+                assert "no-new-privileges:true" in host["SecurityOpt"]
         run(
             [*compose, "exec", "-T", "web", "python", "-", "--inside"],
             input_text=Path(__file__).read_text(encoding="utf-8"),
+        )
+        access = run([*compose, "logs", "--no-color", "web"], capture=True).stdout
+        probes = [line for line in access.splitlines() if "gh_random_proxy_probe=1" in line]
+        assert probes and all("203.0.113.99" not in line for line in probes), (
+            "Public client spoofed the access-log address"
         )
         print("Rehearsing backup and restore against the disposable catalog...", flush=True)
         check_backups(run, root, project, compose)

@@ -33,6 +33,7 @@ DEPLOYMENT_FILES = (
     "deployment/crawler.py",
     "deployment/systemd/gh-random-crawler.service",
     "deployment/systemd/gh-random-crawler.timer",
+    "deployment/systemd/journald-limits.conf.example",
     "README.md",
     "LICENSE",
 )

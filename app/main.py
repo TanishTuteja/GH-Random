@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.catalog.random_repository import (
     FilterSelectionError,
@@ -80,6 +81,11 @@ def create_app(
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+    )
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=runtime_settings.app_allowed_hosts,
+        www_redirect=False,
     )
 
     @app.get("/", include_in_schema=False)

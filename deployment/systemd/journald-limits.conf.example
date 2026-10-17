@@ -1,0 +1,7 @@
+# Optional HOST-WIDE policy. Review existing settings and disk capacity first.
+# Install as /etc/systemd/journald.conf.d/gh-random-limits.conf, not as a unit.
+[Journal]
+SystemMaxUse=256M
+SystemKeepFree=1G
+RuntimeMaxUse=64M
+MaxRetentionSec=7day

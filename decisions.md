@@ -511,3 +511,37 @@ dedicated non-OSError exception in both crawler and deployment controllers;
 assert prompt actual service stop, not merely eventual 90-second forced cleanup.
 The independent ExecStopPost path still provides a fallback after SIGKILL.
 
+## 2026-10-17 — Production hardening and email alert choice
+
+The user selected email alerts. Future alert delivery will use configurable SMTP,
+with secrets and recipient/sender addresses in private host configuration; do not
+send live messages from CI or invent a provider. Transport selection is complete,
+not delivery/failure/staleness implementation or production acceptance.
+
+Pin reviewed official Python 3.12, PostgreSQL 17 and Caddy 2.10 image indexes,
+plus the Dockerfile frontend and existing uv pin. Keep ARM64/AMD64 indexes rather
+than a single workstation architecture. Digest pins need explicit security/update
+reviews; document monthly/advisory-driven PRs, not automatic production updates.
+Database/proxy changes remain deliberate maintenance and are still refused as an
+incidental app deploy. Do not conflate a digest pin with a vulnerability audit.
+
+Require exact host allowlists in production private app configuration; keep safe
+loopback/test defaults locally, reject wildcard/URL-shaped values, and reject
+unknown hosts before route/DB work. Use an internal proxy network, never publish
+Uvicorn, and explicitly trust forwarded headers from all reachable private Docker
+peers. This is a documented trusted-stack boundary, not Caddy-only authentication.
+Caddy remains the first public proxy and sanitizes incoming forwarded headers;
+adding untrusted peers, a public web port or a CDN requires revisiting this policy.
+Rehearse private HTTPS scheme consumption and public spoof rejection without
+adding debug/health endpoints; real certificates/client addresses still need VM
+acceptance. No UI changes or public endpoints are added.
+
+Bound CPU/memory/PIDs and 10 MB x 3 Docker logs on every production role. Initial
+limits are configurable ceilings requiring measured VM sizing, not reservations
+or a claim of stress-tested capacity. Read-only/capability-restricted app/Caddy
+roles keep only their explicit writable mounts; preserve PostgreSQL entrypoint
+initialization privileges. Supply optional journald limits as a reviewed global
+host policy, never silently change it during deploy. Docker/journal rotation does
+not solve backup/deployment-state retention or disk/staleness alerts; keep those
+items pending.
+

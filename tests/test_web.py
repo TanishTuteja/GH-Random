@@ -12,6 +12,26 @@ from app.main import create_app
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
 
 
+def test_host_validation_rejects_unknown_host_without_querying_database() -> None:
+    settings = Settings.model_validate(
+        {
+            "database_url": "postgresql+psycopg://unused@localhost/unused",
+            "app_allowed_hosts": ["example.com"],
+        }
+    )
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/", headers={"Host": "evil.example"}).status_code == 400
+        assert client.get("/", headers={"Host": "example.com"}).status_code == 200
+        assert client.get("/", headers={"Host": "example.com:443"}).status_code == 200
+        assert client.get("/", headers={"Host": "www.example.com"}).status_code == 400
+        assert (
+            client.get(
+                "/", headers={"Host": "evil.example", "X-Forwarded-Host": "example.com"}
+            ).status_code
+            == 400
+        )
+
+
 def _repository(repository_id: int, *, topics: list[str] | None = None) -> Repository:
     return Repository(
         github_id=repository_id,

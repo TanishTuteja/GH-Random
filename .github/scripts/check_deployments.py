@@ -83,7 +83,8 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
 
         app_env = private(
             "app.env",
-            "DATABASE_URL=postgresql+psycopg://deploy_ci:ci-only-password@database:5432/deploy_ci\n",
+            "DATABASE_URL=postgresql+psycopg://deploy_ci:ci-only-password@database:5432/deploy_ci\n"
+            'APP_ALLOWED_HOSTS=["127.0.0.1","localhost","testserver"]\n',
         )
         postgres_env = private(
             "postgres.env",
@@ -247,9 +248,6 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
             deploy(0, extra=["--bootstrap"])
             # Reuse the real app fixture through the packaged web, not raw SQL-only assertions.
             fixture = (ROOT / ".github/scripts/check_containers.py").read_text()
-            fixture = fixture.replace(
-                'headers={"Host": "localhost"}', 'headers={"Host": "127.0.0.1"}'
-            )
             run(
                 [
                     *compose,
@@ -257,6 +255,8 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
                     "-T",
                     "--env",
                     "GH_RANDOM_CONTAINER_SMOKE=1",
+                    "--env",
+                    "GH_RANDOM_SMOKE_HOST=127.0.0.1",
                     "web",
                     "python",
                     "-",

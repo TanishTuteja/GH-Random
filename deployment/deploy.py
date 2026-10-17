@@ -36,6 +36,20 @@ SHA = re.compile(r"[0-9a-f]{40}")
 TAG = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
 
 
+def exact_host(host: object) -> bool:
+    """Mirror app host grammar without requiring app dependencies on the host."""
+    if not isinstance(host, str):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return len(host) <= 253 and all(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in host.split(".")
+        )
+
+
 class DeploymentInterrupted(RuntimeError):
     """A shutdown request that subprocess/selectors cannot retry as EINTR."""
 
@@ -437,9 +451,17 @@ class Deployment:
                 "Configuration paths must be absolute regular files outside the release",
             )
             check_private(path)
+        site = services["caddy"]["environment"]["GH_RANDOM_DOMAIN"]
+        domain = urlsplit(site if "://" in site else "https://" + site).hostname
+        hosts = json.loads(services["web"]["environment"].get("APP_ALLOWED_HOSTS", "[]"))
+        require(
+            isinstance(hosts, list)
+            and bool(hosts)
+            and all(exact_host(host) for host in hosts)
+            and domain in hosts,
+            "APP_ALLOWED_HOSTS must explicitly allow the site hostname without wildcards",
+        )
         if check_site:
-            site = services["caddy"]["environment"]["GH_RANDOM_DOMAIN"]
-            domain = urlsplit(site if "://" in site else "https://" + site).hostname
             require(
                 domain == urlsplit(self.args.url).hostname,
                 "Smoke URL must match the configured site hostname",
