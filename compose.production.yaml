@@ -45,6 +45,7 @@ services:
 
   crawler:
     image: ${GH_RANDOM_IMAGE:?Set GH_RANDOM_IMAGE to the released image digest.}
+    init: true
     profiles: ["crawler"]
     env_file:
       - ${GH_RANDOM_CRAWLER_ENV_FILE:?Set GH_RANDOM_CRAWLER_ENV_FILE to an absolute path.}
@@ -57,6 +58,12 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       database:
         condition: service_healthy

@@ -244,6 +244,10 @@ def test_kernel_lock_excludes_a_second_deployer_without_stale_file_lockout(
         pass
 
 
+def test_deployment_signal_exception_is_not_retryable_io(deploy_tools: ModuleType) -> None:
+    assert not issubclass(deploy_tools.DeploymentInterrupted, OSError)
+
+
 def test_edited_or_incomplete_release_files_are_rejected(
     deploy_tools: ModuleType, tmp_path: Path
 ) -> None:
@@ -355,6 +359,12 @@ def preflight(deploy_tools: ModuleType, tmp_path: Path):
 def test_preflight_accepts_explicit_private_config_and_encoded_credentials(preflight) -> None:
     deployment, metadata, config, image = preflight
     assert deployment.preflight(metadata) == config
+
+
+def test_scheduler_preflight_does_not_require_a_public_smoke_url(preflight) -> None:
+    deployment, metadata, config, image = preflight
+    del deployment.args.url
+    assert deployment.preflight(metadata, check_site=False) == config
 
 
 @pytest.mark.parametrize("role", ["web", "migrate", "crawler"])

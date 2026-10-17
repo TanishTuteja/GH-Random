@@ -270,9 +270,9 @@ does not authorize takeover. `status` shows persisted state, not proof that a
 process is alive. Do not clear a running row in pgAdmin to force concurrency.
 Inspect the actual process/container and database activity first. A disconnected
 old crawler may finish an in-flight GitHub request, but its guarded database
-connection cannot checkpoint/publish the response. Service timeouts, stopping
-Docker children, six-hour timers, alerts, and whole-deployment locking remain
-separate operational work.
+connection cannot checkpoint/publish the response. The production supervisor
+and timer below add Docker-child cleanup, runtime limits, and deployment
+exclusion. Installation on the VM and failure-alert delivery remain separate.
 
 The two rate-limit settings only apply after GitHub explicitly returns a
 rate-limit response. The transport settings apply only to a network or timeout
@@ -378,6 +378,10 @@ tab. It runs three independent jobs on Ubuntu with Python 3.12:
     releases: bootstrap/redeploy, migration exclusion, controller EOF/idle expiry,
     failed DDL, failed public smoke tests, and same-schema rollback with preserved
     catalog data. Nothing is published to GHCR during these rehearsals.
+    Test the scheduled supervisor with failing, hanging, and successful fake
+    crawls, real Docker cleanup and killed-host recovery. Linux CI also exercises
+    temporary native systemd units with the production sandbox: scaled timer
+    failure/next-tick success, service stop, killed supervisor, and runtime limit.
 
 CI installs the pinned uv tool and creates its virtual environment from
 `uv.lock` using `uv sync --locked --extra dev`, with disposable database credentials.
@@ -549,8 +553,8 @@ docker compose --env-file /etc/gh-random/compose.env -f compose.production.yaml 
 ~~~
 
 Run the initial crawler to completion before announcing the site, then replace
-the manual crawler command with the planned six-hour systemd timer. Scheduling,
-alerts, and off-site backup setup remain separate deployment work.
+the manual crawler command with the six-hour systemd timer below. Actual VM
+installation, alerts, and off-site backup setup remain separate deployment work.
 
 ### Creating a release (not deploying it)
 
@@ -721,7 +725,8 @@ The Compose env and state pointer are individually atomic, not one cross-file
 transaction. If interrupted during `record_success`, reconcile both with runtime.
 A cleanup error at `release_catalog` can report failure after a verified release
 has already been recorded; it does not mean the previous image is still running.
-Future scheduled crawls should fail/retry on contention; this script does not
+Scheduled crawls fail promptly on contention and try normally at the next slot;
+this script does not
 disable a timer, so there is no disabled schedule to forget to re-enable.
 
 ### Explicit image rollback
@@ -756,3 +761,108 @@ CI configures that store using Docker's
 a way to disable TLS for a public hostname. Live OCI/DNS/TLS, first GHCR publish,
 off-site recovery, timer installation, and GitHub deployment recording still
 require their separate acceptance checks.
+
+### Six-hour scheduled crawler (Linux/systemd)
+
+Release archives include `deployment/crawler.py` and the matching
+`deployment/systemd/gh-random-crawler.{service,timer}`. These are host-side tools,
+not another permanent container. Install them **after a successful deployment**
+and the first catalog crawl. The installed bootstrap reads the private deploy
+`current.json`, checks the release supervisor's hash/identity, and executes that
+release's supervisor with its matching Compose/deploy helpers. It does not pin
+an old image or read deployment files from moving `main`. Future successful
+deployments/rollbacks therefore select the appropriate crawler automatically.
+
+Default schedule: 00:00, 06:00, 12:00, 18:00 **UTC**, which is **05:30, 11:30,
+17:30, 23:30 IST**. It is independent of the VM's local timezone. `Persistent=true`
+produces one catch-up activation after missed slots while powered off, not one
+queued crawl for every missed slot. A timer does not start another instance of
+an already active service. The exact semantics are documented by
+[systemd.timer](https://github.com/systemd/systemd/blob/main/man/systemd.timer.xml).
+Four daily successful runs cycle through the four existing sort orders; failures
+do not advance rotation, so all four are not guaranteed on a day with failures.
+
+From the trusted, extracted, successfully deployed release directory:
+
+~~~sh
+sudo install -Dm0644 deployment/crawler.py /usr/local/lib/gh-random/crawler.py
+sudo install -Dm0644 deployment/systemd/gh-random-crawler.service /etc/systemd/system/gh-random-crawler.service
+sudo install -Dm0644 deployment/systemd/gh-random-crawler.timer /etc/systemd/system/gh-random-crawler.timer
+sudo systemd-analyze verify /etc/systemd/system/gh-random-crawler.service /etc/systemd/system/gh-random-crawler.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now gh-random-crawler.timer
+~~~
+
+These commands intentionally **enable real crawling**; implementation/tests do
+not install anything on your computer or VM. Only enable the timer, not the service
+at boot. Python at `/usr/bin/python3` must be 3.12+, Docker must already be running,
+and the private `/var/lib/gh-random/deployments` and `/etc/gh-random/compose.env`
+must be the same ones used for deployment. The service defaults to project
+`gh-random`. For custom paths/project names, change both ExecStart/ExecStopPost
+and ReadWritePaths consistently in a reviewed systemd override. Retain all
+referenced release directories and images.
+
+To update the installed bootstrap/unit policy in a later release, first stop
+**both** the timer and service, finish the intended deployment, copy the matching
+files again, verify/reload them, then enable/start the timer again. Deployment
+does not silently overwrite host service configuration or enable new schedules.
+Changing only application code does not require reinstalling unchanged units;
+the bootstrap selects the verified release's worker each time. Review bootstrap
+protocol/unit changes as part of release operations.
+
+~~~sh
+sudo systemctl list-timers gh-random-crawler.timer
+sudo systemctl status gh-random-crawler.service
+sudo journalctl -u gh-random-crawler.service --since today --follow
+sudo systemctl start gh-random-crawler.service
+sudo systemctl stop gh-random-crawler.timer gh-random-crawler.service
+~~~
+
+Stopping only the timer does **not** stop a crawl already running. Stopping the
+service sends the supervisor SIGTERM; it stops its exact labelled Docker child
+(30-second grace, then Docker kills it), removes it, and releases host ownership.
+ExecStopPost is an additional cleanup path if the host supervisor is SIGKILLed.
+It checks systemd invocation identity and Docker labels/ID, not just a name,
+and will not kill unrelated/manual crawlers or a successor activation. Docker
+owns container processes, so killing only the Docker CLI is not sufficient;
+see [Docker's stop behavior](https://docs.docker.com/reference/cli/docker/container/stop/).
+
+The supervised crawl has a five-hour execution limit; systemd adds an independent
+five-hour-five-minute service limit and a 90-second shutdown limit. The service
+uses `Type=exec` because RuntimeMaxSec does not bound `Type=oneshot` in the same
+way; see [systemd.service](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml).
+The runtime limit is a safety policy, not a promise that every large/rate-limited
+crawl fits. Review it using measured production durations before changing it.
+
+Every activation invokes a **normal** `python -m app.cli crawl`, never `--resume`,
+with the cached verified digest and no automatic container/DB startup or image
+pull. A failed, interrupted, or timed-out attempt leaves the current catalog
+available, exits nonzero, cleans its managed child, and does not disable the
+timer. The next activation starts fresh; the existing database ownership rules
+recover abandoned running/staging records after the old connection is gone.
+There is no immediate retry loop. Existing manual crawls/migrations still contend
+for the database lock and are never evicted by elapsed age.
+
+The supervisor holds the same host lock as deployment throughout its managed
+crawl. Stop it deliberately before an urgent deployment, or let it finish;
+contention fails promptly. A failed deployment leaving runtime ahead of
+`current.json` causes scheduled crawling to refuse the mismatched stack until
+deployment is recovered, rather than running stale crawler code against it.
+
+`/var/lib/gh-random/deployments/crawler.json` records the latest managed
+invocation, digest, container name/ID, status, exit code when observed, timestamps,
+and cleanup outcome. Keep it private. If Docker is unreachable, cleanup cannot be
+guaranteed: the unit fails and leaves the exact ownership record for inspection.
+A later supervisor, after obtaining the host lock, cleans only that recorded
+orphan before starting another child. Do not delete this state to force a run.
+Use the standalone installed bootstrap's `stop --state-dir ...` only as an
+explicit operator recovery action; it works without loading application code.
+
+The root service is sandboxed and uses an empty runtime Docker configuration,
+not an administrator's registry credentials. Docker access remains root-equivalent;
+these settings are defense in depth, not a security boundary around untrusted code.
+Crawler Docker logs rotate at 10 MB × 3 and stream into the journal. Global
+journald/disk retention still needs VM configuration. Error/timeout states are
+observable, but **no alert destination or failure/staleness notification is wired
+yet**. Live VM timer installation, reboot behavior, real GitHub authentication,
+and alert delivery remain acceptance tasks.

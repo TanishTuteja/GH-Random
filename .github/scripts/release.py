@@ -30,6 +30,9 @@ DEPLOYMENT_FILES = (
     "deployment/caddy.env.example",
     "deployment/database_backup.py",
     "deployment/deploy.py",
+    "deployment/crawler.py",
+    "deployment/systemd/gh-random-crawler.service",
+    "deployment/systemd/gh-random-crawler.timer",
     "README.md",
     "LICENSE",
 )

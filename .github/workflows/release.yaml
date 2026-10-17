@@ -71,9 +71,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python .github/scripts/release.py verify --metadata "$RUNNER_TEMP/release.json"
 
+      - name: Prepare isolated Docker runtime outside protected home directories
+        run: sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /opt/gh-random-ci-docker
+
       - name: Enable local digest-addressable images for deployment rehearsals
         uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4
         with:
+          runtime-basedir: /opt/gh-random-ci-docker
           daemon-config: |
             {"features": {"containerd-snapshotter": true}}
 

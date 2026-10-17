@@ -62,8 +62,9 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Deploy Compose, Caddy, and scripts from the same release
   revision as the image. Record version, commit, digest, and prior digest;
   never combine a release image with deployment files taken from moving `main`.
-- [ ] Include systemd files in matching release assets when implemented; bind
-  scheduled crawls to the verified deployed digest and coordinate unit changes.
+- [x] Include systemd files and the crawler bootstrap in matching release assets;
+  dispatch the verified release's worker/digest and document deliberate
+  stop/update/verify/reload/start for host unit or bootstrap policy changes.
 - [x] Define and rehearse same-schema rollback to the previous verified image.
   Require explicit compatibility acknowledgement. Never automatically
   downgrade migrations; incompatible schema changes need a recovery plan.
@@ -81,9 +82,11 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Implement three-day membership retention and cleanup of retired/failed
   generations older than seven days after successful publication, including
   orphaned repository metadata.
-- [ ] Add/install a systemd service and persistent six-hour timer for a normal
-  full crawl, without `--resume`, using the deployed digest. Document timezone
-  and behavior after missed runs.
+- [x] Add a systemd service and persistent six-hour UTC timer for a normal crawl,
+  without `--resume`, using the verified deployed digest. Document IST times,
+  one catch-up after missed slots, runtime limits, and failure/next-slot behavior.
+- [ ] Install/enable the units on the production VM, verify real schedule and
+  catch-up after reboot, and measure crawl duration against the five-hour limit.
 - [x] Add database-scoped session ownership for all manual/scheduled CrawlService
   calls and online Alembic operations. Contenders fail promptly; every statement
   and commit is fenced to the original owning connection, including after a
@@ -94,9 +97,12 @@ GitHub settings remain pending unless explicitly marked complete.
   The next exclusive normal/resume crawler marks only consistent staging state
   failed, preserves checkpoints/active catalog, and never uses age to evict a
   live owner. Stop legacy pre-lock processes before the first upgrade.
-- [ ] Ensure stopping the systemd unit also stops its Docker crawler; define
-  maximum runtime and hung-run alerts. Verify interruptions cannot permanently
-  block subsequent scheduled runs.
+- [x] Track/stop the exact labelled Docker child; add a five-hour supervisor
+  limit, independent systemd fallback and ExecStopPost cleanup. Rehearse Docker
+  timeout/orphan recovery plus native systemd timer retry/stop/SIGKILL/watchdog
+  in CI without real GitHub traffic or permanent service installation.
+- [ ] Connect failure/timeout and missing-success states to real alerts; Docker
+  daemon outages may require operator recovery of the recorded managed child.
 - [ ] Smoke-test real GitHub App authentication from the hardened ARM64 crawler
   container, including root-owned key access and outbound network connectivity.
 

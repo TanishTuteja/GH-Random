@@ -1,0 +1,36 @@
+[Unit]
+Description=GH Random scheduled catalog crawl
+Wants=network-online.target
+Requires=docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+Environment=DOCKER_HOST=unix:///run/docker.sock
+Environment=DOCKER_CONFIG=/run/gh-random-crawler/docker
+RuntimeDirectory=gh-random-crawler
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/gh-random/crawler.py run --env-file /etc/gh-random/compose.env --state-dir /var/lib/gh-random/deployments
+ExecStopPost=/usr/bin/python3 /usr/local/lib/gh-random/crawler.py stop --state-dir /var/lib/gh-random/deployments
+Restart=no
+RuntimeMaxSec=5h5min
+TimeoutStopSec=90s
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gh-random/deployments
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gh-random-crawler
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
