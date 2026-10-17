@@ -18,6 +18,8 @@ venv/
 .env
 *.env
 /deployment/alerts.json
+/deployment/backup.json
+*.age
 *.pem
 crawl.log
 crawl-error.log

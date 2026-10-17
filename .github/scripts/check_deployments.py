@@ -173,6 +173,8 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
                     "deployment/database_backup.py",
                     "deployment/crawler.py",
                     "deployment/notifications.py",
+                    "deployment/backup.py",
+                    "deployment/backup_archive.py",
                 ):
                     shutil.copyfile(ROOT / filename, release / filename)
                 composition = (release / "compose.production.yaml").read_text()

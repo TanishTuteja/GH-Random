@@ -438,6 +438,9 @@ def _native_units(
             "Native timer retry, stop, SIGKILL/watchdog and TLS failure/recovery email passed.",
             flush=True,
         )
+        from check_backup_units import check as check_backup_unit
+
+        check_backup_unit(args, environment, run, mailbox, alerts_config, monitor_name)
     except BaseException:
         print(
             run(

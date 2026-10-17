@@ -92,7 +92,11 @@ jobs:
         run: uv sync --locked --extra dev
 
       - name: Run tests
-        run: .venv/bin/python -m pytest
+        env:
+          GH_RANDOM_TEST_AGE: ${{ runner.temp }}/age-tools/age
+        run: |
+          .venv/bin/python deployment/install_age.py --destination "$RUNNER_TEMP/age-tools"
+          .venv/bin/python -m pytest
 
       # Fixtures remove model tables after each test, leaving an empty database.
       - name: Apply migrations to empty database

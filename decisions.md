@@ -582,3 +582,42 @@ or a dead mail provider. Independent external uptime/heartbeat monitoring and
 real SMTP tests remain launch acceptance tasks, not silently marked complete.
 Host script/unit upgrades stay explicit and ship in the matching release bundle.
 
+## 2026-10-18 — Encrypted, verified daily recovery copies
+
+Use official checksum-pinned age 1.3.2 and native X25519 public recipients on the
+VM, with private recovery identities kept separately/offline by the operator.
+Do not invent crypto or add database/SMTP/GitHub credentials to archives. Package
+the existing checked pg_dump and manifest, encrypt it, and clean only the exact
+private temporary work tree. Secure deletion on SSDs is not promised; unclean
+exit can leave private staging files requiring deliberate recovery/cleanup.
+
+Choose a daily 05:15 UTC (10:45 IST) persistent systemd timer in the gap between
+crawl slots. Limit the whole unit to 40 minutes plus 90-second stop cleanup.
+Initial RPO is 24 hours and restore target one hour after replacement host
+readiness; these are policies requiring real-catalog/cloud rehearsal, not CI
+performance claims. Reuse host deployment exclusion and the fenced DB lease.
+Separate coordinator idle and SQL statement limits so a long encryption/transfer
+does not silently release ownership or increase migration statement budgets.
+
+Before promoting backup-success.json, require encryption, unique no-overwrite
+OCI upload with checksum verification, a version-constrained full download and
+SHA-256 match, retention completion and lease cleanup. Use scoped VM instance
+principals, not host administrator API keys. The public CLI adapter is implemented;
+actual OCI IAM, bucket behavior, quotas, immutability and transfer remain manual
+acceptance. Explicit local-only rehearsal cannot promote an off-site watermark.
+
+Keep at least two verified local encrypted copies, even beyond the seven-day
+age policy. Prune only managed/checksummed artifacts with a valid off-site receipt
+after a fresh verified backup. Preserve unknown/corrupt/pending files for operator
+inspection, and never blanket-delete a backup root. Do not grant remote deletion
+or install an age-only lifecycle expiry that could erase every off-site recovery
+copy during a prolonged outage. OCI retention/quotas need an independently
+supervised/protected recovery policy; no bucket lifecycle is silently changed.
+
+Allow the deployment script's explicit --backup-config to seal/upload/read-back
+verify pre-DDL snapshots using the same policy. The old plaintext path remains
+only as an explicit compatibility/development option; production examples opt in
+to encryption. Recovery is offline, bounded, path/link/overwrite-safe, and verifies
+the inner dump before the existing new-database-only restore. age authenticates
+ciphertext, not its sender; retain explicit trusted-source acknowledgement.
+

@@ -343,6 +343,7 @@ pgAdmin, or using old operator code bypasses this cooperative protection.
 ## Verification
 
 ~~~powershell
+python deployment/install_age.py --destination build/age-tools
 pytest
 ruff format --check app tests alembic .github/scripts deployment
 ruff check app tests alembic .github/scripts deployment
@@ -490,11 +491,12 @@ ACLs; this tool enforces POSIX ownership/modes only on Linux. Never commit or
 upload plaintext backups. `backups/`, `*.dump`, and real `*.env` files are ignored
 by Git and the Docker build context; keep production backups outside the repo.
 
-These are local, **unencrypted** snapshots, not a complete production backup
-system. Scheduling, retention, off-VM encryption/upload, failure/staleness alerts,
-recovery-point/recovery-time targets, and VM-loss restore tests remain deployment
-TODOs. No timer is installed or enabled by these commands. Do not delete older
-backups or rely on VM-local storage alone before off-site recovery is verified.
+Those manual commands produce local **unencrypted** snapshots. For production,
+use the [encrypted backup and recovery guide](deployment/BACKUPS.md): daily
+05:15 UTC scheduling, seven-day/minimum-two-copy local retention, public-key
+encryption, verified OCI upload/read-back, safe offline recovery and email hooks.
+Its live OCI/key/VM setup and production VM-loss rehearsal remain operator work.
+No timer is installed/enabled by the development commands above.
 
 ### Change workflow
 
@@ -670,6 +672,7 @@ sudo python3 /opt/gh-random/releases/v0.1.0/deployment/deploy.py apply \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
   --backup-dir /var/backups/gh-random \
+  --backup-config /etc/gh-random/backup.json \
   --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \
   --bootstrap
@@ -702,13 +705,17 @@ releases, invoke the new release's script with the same paths and **omit
 The state directory contains private per-attempt JSON journals and command logs,
 plus `current.json` and a persistent `deploy.lock` file. The latter is a kernel
 lock, not a stale-file sentinel: **do not delete it** to force another deployment.
-Logs/backups can contain sensitive data. Protect them; no automated pruning,
-encryption or off-site upload is installed by this script. Email is opt-in through
+Logs/backups can contain sensitive data. Protect them. Deployment does not install
+timers; `--backup-config` seals and verifies off-site copies before DDL, while the
+daily backup worker owns retention. Omitting that policy retains the explicit
+plaintext development path. Email is opt-in through
 `--alerts-config /etc/gh-random/alerts.json`; configure and test it as described
 below before production deployment. Without that flag, deploy does not send mail.
 
 `--timeout-seconds` defaults to 1,800 per operational command/controller idle
 period and bounds migration statements. `--smoke-timeout-seconds` defaults to 60.
+An encrypted backup policy extends the controller's idle budget for its bounded
+transfer phases, without extending the SQL statement timeout.
 Increase deliberately for slow backups/migrations. SIGINT/SIGTERM and normal
 failures clean up the uniquely named coordinator container, releasing its DB
 lease. If the host is killed abruptly, controller EOF/idle expiry releases it;
@@ -743,6 +750,7 @@ sudo python3 /opt/gh-random/releases/v0.1.1/deployment/deploy.py rollback \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
   --backup-dir /var/backups/gh-random \
+  --backup-config /etc/gh-random/backup.json \
   --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \
   --confirm-schema-compatible
