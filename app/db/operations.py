@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -32,7 +32,7 @@ class CatalogOwnershipLost(RuntimeError):
 
 
 @contextmanager
-def exclusive_catalog_operation(connection: Connection) -> Iterator[None]:
+def exclusive_catalog_operation(connection: Connection) -> Iterator[Callable[[], None]]:
     """Own one physical DB session and fence every statement/commit against loss.
 
     The caller must use this same Connection for its work. PostgreSQL advisory
@@ -91,7 +91,7 @@ def exclusive_catalog_operation(connection: Connection) -> Iterator[None]:
         event.listen(connection, "before_cursor_execute", before_statement)
         event.listen(connection, "commit", before_commit)
         guarded = True
-        yield
+        yield check_ownership
     finally:
         if guarded:
             event.remove(connection, "before_cursor_execute", before_statement)
