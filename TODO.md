@@ -19,7 +19,7 @@ GitHub settings remain pending unless explicitly marked complete.
 - [x] Make dependencies repeatable with committed `uv.lock`, shared locked
   installation in local setup/CI/Docker, and hash-verified build-tool constraints.
   Pin uv and use Python 3.12 across the supported environments.
-- [ ] Pin reviewed Python, PostgreSQL, and Caddy images to immutable digests and
+- [x] Pin reviewed Python, PostgreSQL, and Caddy images to immutable digests and
   document how updates will be reviewed.
 
 ### 2. Production Compose and configuration
@@ -43,8 +43,9 @@ GitHub settings remain pending unless explicitly marked complete.
   basic response headers.
 - [ ] Verify live DNS, certificate issuance/renewal, HTTP-to-HTTPS redirects, and
   the real hostname on the VM; these were not covered by local validation.
-- [ ] Verify trusted proxy/forwarded-header handling and host validation behind
-  Caddy so scheme, client IP, and host handling match production.
+- [x] Add exact-host allowlisting and explicit private-network proxy trust;
+  test spoofed forwarded headers and canonical redirect schemes through Caddy.
+  Verify the real HTTPS scheme/client address again on the VM before launch.
 
 ### 4. Deployment and migrations
 
@@ -124,18 +125,21 @@ GitHub settings remain pending unless explicitly marked complete.
 - [ ] Restore an encrypted off-site production backup into a separate database
   and verify schema, catalog counts, and discovery, including VM-loss recovery,
   before relying on the complete backup procedure.
-- [ ] Choose email/webhook alerts for crawler, backup, and deployment failures.
+- [x] Choose email alerts through configurable SMTP; credentials/recipients stay
+  in private VM configuration, not the repository. No live delivery tested yet.
+- [ ] Implement email alerts for crawler, backup, and deployment failures.
   Include run/deployment identifiers and useful logs without secrets; test
   delivery and prevent alert loops.
 - [ ] Add monitoring outside the VM for site downtime and missing successful
   crawls/backups. An on-host failure handler cannot alert while its VM is down.
-- [ ] Bound Docker and journald logs; document container logs, `journalctl`, and
-  `python -m app.cli status`. Monitor disk use, backup age, last successful
-  crawl, and TLS expiry/renewal failures.
+- [x] Bound all production Docker logs and container resources; add a reviewed,
+  optional host-wide journald limits example and operator commands.
+- [ ] Install/verify the journald policy on the VM. Monitor disk use, backup age,
+  last successful crawl, and TLS expiry/renewal failures.
 - [ ] Document recovery from stuck crawls, failed migrations, full disks, revoked
   GitHub credentials, and complete VM loss/replacement.
-- [ ] Define host updates/reboots, secret rotation, image cleanup, and resource
-  limits suitable for the VM. Preserve persistent data and rollback images.
+- [ ] Define host updates/reboots, secret rotation, and image cleanup. Measure
+  initial resource limits on the actual VM; preserve data and rollback images.
 
 ### 7. GitHub Actions and releases
 

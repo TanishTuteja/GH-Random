@@ -866,3 +866,84 @@ journald/disk retention still needs VM configuration. Error/timeout states are
 observable, but **no alert destination or failure/staleness notification is wired
 yet**. Live VM timer installation, reboot behavior, real GitHub authentication,
 and alert delivery remain acceptance tasks.
+
+### Production runtime hardening and maintenance
+
+Set `APP_ALLOWED_HOSTS` in the private **app.env** to a JSON list of exact,
+lowercase public hostnames, for example `APP_ALLOWED_HOSTS=["example.com"]`.
+Do not include a scheme, path, port, or wildcard. Match `GH_RANDOM_DOMAIN` in
+caddy.env; deployment preflight refuses a missing/nonmatching allowlist. Local
+defaults allow localhost, loopback IPs and TestClient's testserver, not arbitrary
+public names. Unknown Host headers receive HTTP 400, without a www redirect.
+
+Caddy alone publishes host ports. Web joins only the internal `proxy` and
+`backend` networks, not the internet-facing `edge` network. Production Uvicorn
+explicitly accepts forwarded scheme/client-address headers from its private
+peers (`--proxy-headers --forwarded-allow-ips=*`). This trusts **all reachable
+Docker peers**, not cryptographically only Caddy: do not publish port 8000,
+attach untrusted containers to these networks, or reuse this command for a
+publicly exposed Uvicorn server. Docker/root operators and app/database peers
+are within this trust boundary. Caddy is the first public proxy and
+[ignores untrusted incoming forwarded values](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#defaults).
+Adding a CDN/load balancer requires a separate review of its exact trusted ranges;
+never blindly trust internet-supplied X-Forwarded-* headers. Container smoke tests
+check public spoof rejection and trusted-peer HTTP/HTTPS redirect schemes. Verify
+real HTTPS redirects and client addresses on the VM too.
+
+Web, migrations and crawler have read-only root filesystems, a bounded 64 MB
+temporary directory, dropped capabilities and no-new-privileges. Caddy also has
+a read-only root filesystem with writable data/config volumes, and retains only
+NET_BIND_SERVICE for its listening ports. PostgreSQL retains its standard
+initialization permissions and a persistent data volume; do not blindly apply
+the application's capability policy to its entrypoint.
+
+Each service rotates Docker JSON logs at 10 MB × 3 files **per container**.
+CPU/memory ceilings are configurable in compose.env via `DATABASE_CPUS/MEMORY`,
+`WEB_CPUS/MEMORY`, `CRAWLER_CPUS/MEMORY`, `MIGRATE_CPUS/MEMORY` and
+`CADDY_CPUS/MEMORY` (each slash denotes the two suffixes, e.g. WEB_CPUS and
+WEB_MEMORY). PID ceilings are 256 for PostgreSQL and 128 for other roles.
+These are initial ceilings, not reserved capacity or measured sizing guarantees.
+Memory exhaustion can kill a process; inspect Docker State.OOMKilled and review
+limits against real crawl/backup traffic and the VM's RAM before launch.
+
+The release bundle includes an **optional host-wide** journal policy at
+deployment/systemd/journald-limits.conf.example. Review existing host policies
+with `systemd-analyze cat-config systemd/journald.conf`, then deliberately install:
+
+~~~sh
+sudo install -Dm0644 deployment/systemd/journald-limits.conf.example /etc/systemd/journald.conf.d/gh-random-limits.conf
+sudo systemctl restart systemd-journald
+sudo journalctl --disk-usage
+sudo journalctl -u gh-random-crawler.service --since today
+~~~
+
+This limits disk journals to 256 MB, memory journals to 64 MB, requests 1 GB
+free disk and seven-day maximum retention. It affects **other host services**
+too. Size/free-space limits can retain less history; active files and unrelated
+logs/backups are not a total disk quota. See
+[journald's limits](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html).
+Nothing installs/restarts the host journal automatically. View container output
+with the matching release's Compose command followed by `logs --tail 100 web`
+(or database/caddy), and use `run --rm crawler python -m app.cli status` for
+catalog status. Deployment journals/backups require their separate retention
+policy; Docker/journald rotation does not prune them.
+
+Python, uv, Dockerfile frontend, PostgreSQL and Caddy use immutable multi-platform
+index digests. Pins prevent silent changes; they do **not** automatically receive
+security patches or certify vulnerability-free images. Review upstream releases
+at least monthly and promptly for relevant security fixes. Inspect candidate
+indexes with `docker buildx imagetools inspect IMAGE:TAG`, confirm linux/arm64
+and linux/amd64 support, and update pins together in Dockerfile, production
+Compose defaults, compose.env.example and CI's PostgreSQL service as applicable.
+Use a focused PR and require all three CI jobs, including fresh migrations,
+proxy/resource checks, restore, redeploy and rollback rehearsals.
+
+Python/uv updates ship in a new signed application release. PostgreSQL/Caddy
+updates also require deliberate host maintenance: the deploy script refuses an
+incidental database/proxy image change. Take a tested backup, stop the crawler
+timer/service, plan downtime, review compatibility, then update/recreate only the
+intended services with matching reviewed configuration. Major PostgreSQL upgrades
+need their own pg_upgrade or dump/restore plan; never point a new major at the old
+data volume. Preserve persistent volumes, verified releases and rollback images;
+never use blanket Docker volume/system pruning. Restart/verify scheduling after
+maintenance. No image update or host policy was applied to a live VM here.

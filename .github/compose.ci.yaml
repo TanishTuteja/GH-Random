@@ -4,6 +4,7 @@ services:
   web:
     environment:
       GH_RANDOM_CONTAINER_SMOKE: "1"
+      APP_ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver"]'
   caddy:
     ports: !reset []
     environment:

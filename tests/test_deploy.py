@@ -324,6 +324,7 @@ def preflight(deploy_tools: ModuleType, tmp_path: Path):
                     "image": metadata["image"],
                     "environment": {
                         "DATABASE_URL": "postgresql+psycopg://owner:a%40b@database:5432/catalog",
+                        "APP_ALLOWED_HOSTS": '["example.com"]',
                     },
                 }
                 for role in ("web", "migrate", "crawler")
@@ -394,6 +395,25 @@ def test_preflight_rejects_unrelated_smoke_hostname(preflight) -> None:
     deployment, metadata, config, image = preflight
     deployment.args.url = "https://unrelated.example"
     with pytest.raises(ValueError, match="hostname"):
+        deployment.preflight(metadata)
+
+
+@pytest.mark.parametrize(
+    "hosts",
+    [
+        "[]",
+        '["*"]',
+        '["*.example.com"]',
+        '"example.com"',
+        "[1]",
+        '["example.com", "https://bad.example"]',
+        '["example.com", "bad..example"]',
+    ],
+)
+def test_preflight_rejects_missing_or_wildcard_host_allowlist(preflight, hosts: str) -> None:
+    deployment, metadata, config, image = preflight
+    config["services"]["web"]["environment"]["APP_ALLOWED_HOSTS"] = hosts
+    with pytest.raises(ValueError, match="APP_ALLOWED_HOSTS"):
         deployment.preflight(metadata)
 
 

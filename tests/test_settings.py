@@ -1,6 +1,41 @@
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from app.core.settings import GitHubAppSettings, Settings
+
+
+@pytest.mark.parametrize(
+    "hosts",
+    [
+        [],
+        ["*"],
+        ["*.example.com"],
+        ["https://example.com"],
+        ["example.com:443"],
+        ["example..com"],
+        [" bad "],
+    ],
+)
+def test_host_allowlist_rejects_unsafe_configuration(hosts: list[str]) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"database_url": "unused", "app_allowed_hosts": hosts})
+
+
+def test_host_allowlist_accepts_explicit_hosts_and_ipv6() -> None:
+    hosts = ["example.com", "localhost", "127.0.0.1", "::1"]
+    assert (
+        Settings.model_validate(
+            {"database_url": "unused", "app_allowed_hosts": hosts}
+        ).app_allowed_hosts
+        == hosts
+    )
+
+
+def test_host_allowlist_loads_json_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ALLOWED_HOSTS", '["example.com"]')
+    assert Settings.model_validate({"database_url": "unused"}).app_allowed_hosts == ["example.com"]
 
 
 def test_database_url_is_required() -> None:

@@ -1,6 +1,21 @@
 name: gh-random
 
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-hardening: &app-hardening
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *bounded-logging
+
 x-app-service: &app-service
+  <<: *app-hardening
   image: ${GH_RANDOM_IMAGE:?Set GH_RANDOM_IMAGE to the released image digest.}
   init: true
   depends_on:
@@ -9,7 +24,11 @@ x-app-service: &app-service
 
 services:
   database:
-    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24}
+    cpus: ${DATABASE_CPUS:-1.0}
+    mem_limit: ${DATABASE_MEMORY:-1g}
+    pids_limit: 256
+    logging: *bounded-logging
     env_file:
       - ${GH_RANDOM_POSTGRES_ENV_FILE:?Set GH_RANDOM_POSTGRES_ENV_FILE to an absolute path.}
     restart: unless-stopped
@@ -25,6 +44,9 @@ services:
 
   migrate:
     <<: *app-service
+    cpus: ${MIGRATE_CPUS:-1.0}
+    mem_limit: ${MIGRATE_MEMORY:-512m}
+    pids_limit: 128
     profiles: ["migrate"]
     env_file:
       - ${GH_RANDOM_APP_ENV_FILE:?Set GH_RANDOM_APP_ENV_FILE to an absolute path.}
@@ -35,35 +57,32 @@ services:
 
   web:
     <<: *app-service
+    cpus: ${WEB_CPUS:-1.0}
+    mem_limit: ${WEB_MEMORY:-512m}
+    pids_limit: 128
     env_file:
       - ${GH_RANDOM_APP_ENV_FILE:?Set GH_RANDOM_APP_ENV_FILE to an absolute path.}
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    # All reachable peers are private, trusted application services; never
+    # publish web's port or attach untrusted containers to proxy/backend.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
     networks:
-      - edge
+      - proxy
       - backend
 
   crawler:
+    <<: *app-hardening
     image: ${GH_RANDOM_IMAGE:?Set GH_RANDOM_IMAGE to the released image digest.}
     init: true
     profiles: ["crawler"]
     env_file:
       - ${GH_RANDOM_CRAWLER_ENV_FILE:?Set GH_RANDOM_CRAWLER_ENV_FILE to an absolute path.}
     user: "0:0"
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cpus: ${CRAWLER_CPUS:-1.0}
+    mem_limit: ${CRAWLER_MEMORY:-1g}
+    pids_limit: 128
     restart: "no"
     stop_grace_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     depends_on:
       database:
         condition: service_healthy
@@ -78,7 +97,12 @@ services:
       - crawler_egress
 
   caddy:
-    image: ${CADDY_IMAGE:-caddy:2.10-alpine}
+    <<: *app-hardening
+    image: ${CADDY_IMAGE:-caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d}
+    cap_add: [NET_BIND_SERVICE]
+    cpus: ${CADDY_CPUS:-0.5}
+    mem_limit: ${CADDY_MEMORY:-256m}
+    pids_limit: 128
     env_file:
       - ${GH_RANDOM_CADDY_ENV_FILE:?Set GH_RANDOM_CADDY_ENV_FILE to an absolute path.}
     restart: unless-stopped
@@ -95,6 +119,7 @@ services:
       - caddy_config:/config
     networks:
       - edge
+      - proxy
 
 volumes:
   postgres_data:
@@ -103,6 +128,8 @@ volumes:
 
 networks:
   edge:
+  proxy:
+    internal: true
   backend:
     internal: true
   crawler_egress:
