@@ -995,6 +995,11 @@ triage, stuck crawls, failed migrations, disk pressure, credential rotation,
 host maintenance, safe image cleanup and VM replacement. Its live acceptance
 steps still need the real deployment; no production host is configured by CI.
 
+Optional production database browsing uses a separate, loopback-only admin
+overlay. See [private production pgAdmin](deployment/PGADMIN.md) for credentials,
+Bastion/SSH forwarding and service-specific start/stop commands. Normal deploys
+never start pgAdmin, and neither pgAdmin nor PostgreSQL should be public.
+
 Set `APP_ALLOWED_HOSTS` in the private **app.env** to a JSON list of exact,
 lowercase public hostnames, for example `APP_ALLOWED_HOSTS=["example.com"]`.
 Do not include a scheme, path, port, or wildcard. Match `GH_RANDOM_DOMAIN` in

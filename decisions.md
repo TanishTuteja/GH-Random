@@ -14,6 +14,20 @@ host updates, unit upgrades and secret rotation remain deliberate maintenance.
 The documented procedures do not establish live VM capacity, provider delivery,
 DNS or recovery-time acceptance. Keep those manual checks separate and unchecked.
 
+## 2026-10-18 — Production pgAdmin is explicit and loopback-only
+
+Use a separate optional Compose overlay/profile, not the normal production
+startup/deploy path. Pin the official multi-platform image, run UID/GID 5050 with
+dropped capabilities and a private password-file bind. Join backend and a
+dedicated admin-access bridge: Docker does not publish a port for internal-only
+networks. This separate bridge permits outbound traffic, not public ingress;
+the explicit host binding stays loopback-only and app services do not join it.
+Allow the image's writable initialization filesystem; do not pretend it has the
+application's read-only root. Bind only 127.0.0.1, disable restart, and remove only
+its container after use. Access requires SSH local forwarding through a managed
+Bastion VM session, not a direct Bastion port-forward to the VM private IP. Keep
+database credentials out of defaults and private GUI edits out of schema history.
+
 ## 2026-09-29 — Single application repository
 
 The FastAPI server and offline crawler share this repository, Python environment,

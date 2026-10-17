@@ -22,6 +22,9 @@ ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_JOBS = {"Python checks", "PostgreSQL tests", "Production containers"}
 DEPLOYMENT_FILES = (
     "compose.production.yaml",
+    "compose.pgadmin.yaml",
+    "deployment/pgadmin.env.example",
+    "deployment/PGADMIN.md",
     "Caddyfile",
     "deployment/compose.env.example",
     "deployment/postgres.env.example",

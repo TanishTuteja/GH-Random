@@ -417,6 +417,8 @@ def check_containers(existing_image: str | None = None) -> None:
         run([*compose, "up", "--detach", "--wait", "--wait-timeout", "60", "database"])
         run([*compose, "--profile", "migrate", "run", "--rm", "migrate"])
         run([*compose, "--profile", "migrate", "run", "--rm", "migrate", "alembic", "check"])
+        print("Checking optional loopback-only pgAdmin...", flush=True)
+        run([sys.executable, ".github/scripts/check_pgadmin.py", "--", *compose])
         print(
             "Checking the hardened crawler role without a crawl or GitHub requests...", flush=True
         )

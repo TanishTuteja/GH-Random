@@ -38,9 +38,12 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   key read-only only into the crawler. Actual VM secrets still need setup.
 - [x] Smoke-test an empty disposable production database, baseline migration,
   and packaged web response (HTTP 200); remove that test stack.
-- [ ] Add optional production pgAdmin bound to `127.0.0.1`, reached through a
-  Bastion tunnel and stopped after use. Development pgAdmin already exists;
-  production pgAdmin need not block launch.
+- [x] Add optional production pgAdmin bound to `127.0.0.1`, separate opt-in
+  overlay/private password file, pinned image and bounded non-root runtime.
+  Test login and database connectivity on a disposable stack; document managed
+  Bastion SSH forwarding and service-only cleanup in deployment/PGADMIN.md.
+- [ ] Verify the real Bastion tunnel and external port isolation if production
+  pgAdmin is used. The optional tool need not block launch.
 
 ### 3. HTTPS and reverse proxy
 
