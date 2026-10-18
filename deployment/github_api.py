@@ -8,10 +8,11 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from database_backup import check_private
@@ -27,6 +28,33 @@ class GitHubError(RuntimeError):
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def validate_path(path: str) -> None:
+    parsed = urlsplit(path)
+    decoded = parsed.path
+    for _ in range(4):
+        decoded = unquote(decoded)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or not decoded.startswith("/")
+        or "//" in decoded
+        or "\\" in decoded
+        or "%" in decoded
+        or any(part in {".", ".."} for part in decoded.split("/"))
+        or any(ord(char) < 32 or ord(char) == 127 for char in path + decoded)
+    ):
+        raise ValueError("Unsafe GitHub API path")
+
+
+def valid_token(token: object) -> bool:
+    return (
+        isinstance(token, str)
+        and 0 < len(token) <= 8192
+        and not any(char.isspace() for char in token)
+    )
 
 
 def private_path(value: object) -> Path:
@@ -52,12 +80,42 @@ class Credential:
         self.expires = 0.0
         mode = config.get("type")
         if mode == "app":
+            if (
+                not isinstance(config.get("client_id"), str)
+                or re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", config["client_id"]) is None
+            ):
+                raise ValueError("App client ID required for JWT issuer")
             if not all(
-                isinstance(config.get(key), int) and config[key] > 0
+                type(config.get(key)) is int and config[key] > 0
                 for key in ("app_id", "installation_id")
             ):
                 raise ValueError("Positive App and installation IDs required")
             private_path(config.get("private_key_file"))
+            permissions = config.get(
+                "permissions",
+                {
+                    "contents": "read",
+                    "actions": "read",
+                    "deployments": "write",
+                    "attestations": "read",
+                },
+            )
+            allowed = {
+                "contents": {"read"},
+                "actions": {"read"},
+                "deployments": {"read", "write"},
+                "attestations": {"read"},
+            }
+            if (
+                not isinstance(permissions, dict)
+                or not permissions
+                or any(
+                    key not in allowed or value not in allowed[key]
+                    for key, value in permissions.items()
+                )
+            ):
+                raise ValueError("Invalid operations App permissions")
+            self.permissions = permissions
         elif mode == "token_file":
             private_path(config.get("token_file"))
         elif mode != "environment":
@@ -73,7 +131,10 @@ class Credential:
         if mode == "environment":
             token = os.environ.get("GH_TOKEN", "")
         elif mode == "token_file":
-            token = private_path(self.config["token_file"]).read_text().strip()
+            path = private_path(self.config["token_file"])
+            if path.stat().st_size > 8192:
+                raise GitHubError("Credential file exceeds size limit")
+            token = path.read_text().strip()
         else:
             if self.cached and self.expires > time.time() + 120:
                 return self.cached
@@ -85,7 +146,7 @@ class Credential:
             unsigned = (
                 encode({"alg": "RS256", "typ": "JWT"})
                 + "."
-                + encode({"iat": now - 60, "exp": now + 540, "iss": self.config["app_id"]})
+                + encode({"iat": now - 60, "exp": now + 540, "iss": self.config["client_id"]})
             )
             signed = subprocess.run(
                 [
@@ -109,19 +170,22 @@ class Credential:
                 method="POST",
                 payload={
                     "repositories": [self.repository.split("/")[1]],
-                    "permissions": {
-                        "contents": "read",
-                        "actions": "read",
-                        "deployments": "write",
-                        "attestations": "read",
-                    },
+                    "permissions": self.permissions,
                 },
             )
             value = json.loads(response)
-            token = value["token"]
-            # Refresh conservatively; the provider issues one-hour installation tokens.
-            self.cached, self.expires = token, time.time() + 3000
-        if not isinstance(token, str) or not token or any(char.isspace() for char in token):
+            token = value.get("token")
+            expiry = value.get("expires_at")
+            if not valid_token(token) or not isinstance(expiry, str):
+                raise GitHubError("Invalid installation credential response")
+            try:
+                instant = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                if instant.tzinfo is None or not 120 < instant.timestamp() - time.time() <= 3700:
+                    raise ValueError
+            except ValueError:
+                raise GitHubError("Invalid installation credential expiry") from None
+            self.cached, self.expires = token, instant.timestamp()
+        if not valid_token(token):
             raise GitHubError("Missing or invalid GitHub credential")
         return token
 
@@ -136,8 +200,7 @@ def request(
     timeout: int = 30,
     binary: bool = False,
 ) -> bytes:
-    if not path.startswith("/") or path.startswith("//") or "#" in path or "\\" in path:
-        raise ValueError("Only absolute GitHub API paths are accepted")
+    validate_path(path)
     headers = {
         "Authorization": f"Bearer {token}",
         "User-Agent": "gh-random-operations",
@@ -194,6 +257,7 @@ class GitHubAPI:
         self.base = f"/repos/{repository}"
 
     def call(self, path: str, *, method: str = "GET", payload: object = None) -> Any:
+        validate_path(path)
         if not path.startswith(self.base + "/"):
             raise ValueError("GitHub path outside configured repository")
         contents = request(
@@ -211,6 +275,7 @@ class GitHubAPI:
         return self.call(path, method="PATCH", payload=payload)
 
     def download(self, path: str, *, limit: int = 16 * 1024 * 1024) -> bytes:
+        validate_path(path)
         if not path.startswith(self.base + "/"):
             raise ValueError("Download outside configured repository")
         return request(
