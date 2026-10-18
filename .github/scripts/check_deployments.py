@@ -442,6 +442,10 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
                     *(["--systemd"] if systemd else []),
                 ]
             )
+            if systemd:
+                from check_pull_deployment import check as check_pull
+
+                check_pull(workspace, releases[0][0], env_file, state, url, project)
         except BaseException:
             # These logs contain only disposable fixture values, never real configuration.
             for log in sorted((workspace / "state").glob("*.log")):
