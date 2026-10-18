@@ -38,6 +38,19 @@ the old plugin constraint would prevent adopting the patched pytest major.
 Pytest is not installed in the production image; this is still important for
 developer/CI environments and must not be dismissed as a false positive.
 
+## 2026-10-18 — Host-local capacity and certificate early warnings
+
+Extend the existing private hourly notifier, not the public application routes.
+Monitor up to three local filesystems for low available bytes/percentage/inodes;
+initial warnings are 2 GiB or 10% space or 5% inodes. Report configured indices
+instead of arbitrary host paths. Keep the path order stable during incidents.
+The TLS probe is opt-in until the real hostname works; verify SNI/hostname/system
+trust and warn at 14 days. Bound DNS/handshake in a child with a 20-second parent
+timeout. Unavailable probes are failures, not healthy. Reuse durable retries,
+cooldown and recovery notices without emailing raw provider/certificate errors.
+This does not solve whole-VM outage detection, prove Caddy renewal, or guarantee
+email when disk/state storage is already full; independent monitoring remains.
+
 ## 2026-09-29 — Single application repository
 
 The FastAPI server and offline crawler share this repository, Python environment,

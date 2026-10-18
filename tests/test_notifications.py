@@ -190,6 +190,157 @@ def test_invalid_configuration_fails_closed(alerts, config, tmp_path, field, val
         alerts.load_config(path)
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("disk_paths", "not-a-list"),
+        ("disk_paths", ["relative"]),
+        ("disk_paths", ["/", "/"]),
+        ("disk_paths", ["/a", "/b", "/c", "/d"]),
+        ("disk_paths", [42]),
+        ("disk_min_free_bytes", True),
+        ("disk_min_free_percent", 100),
+        ("disk_min_free_inode_percent", 0),
+        ("tls_host", "https://example.com/path"),
+        ("tls_host", "Example.com"),
+        ("tls_host", "example.com:443"),
+        ("tls_host", ""),
+        ("tls_warn_days", -1),
+    ],
+)
+def test_invalid_host_probe_configuration(alerts, config, tmp_path, field, value):
+    config[field] = value
+    with pytest.raises(ValueError):
+        alerts.load_config(private_text(tmp_path / "config.json", json.dumps(config)))
+
+
+def host_policy(config, tmp_path):
+    return {
+        **config,
+        "disk_paths": [str(tmp_path)],
+        "disk_min_free_bytes": 200,
+        "disk_min_free_percent": 10,
+        "disk_min_free_inode_percent": 5,
+        "tls_host": "localhost",
+        "tls_warn_days": 14,
+    }
+
+
+def test_disk_and_tls_failures_recover_through_normal_alert_ledger(
+    alerts, config, tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    policy = host_policy(config, tmp_path)
+    sent = []
+    disk_free = [100]
+    inode_free = [2]
+    days = [2]
+    monkeypatch.setattr(
+        alerts.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=disk_free[0], total=1000),
+    )
+    monkeypatch.setattr(
+        alerts.os,
+        "statvfs",
+        lambda path: SimpleNamespace(f_files=100, f_favail=inode_free[0]),
+        raising=False,
+    )
+
+    def probe(command, **kwargs):
+        assert kwargs["timeout"] == 20 and "probe-tls" in command
+        assert "SECRET" not in str(command)
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps((NOW + timedelta(days=days[0])).timestamp())
+        )
+
+    monkeypatch.setattr(alerts.subprocess, "run", probe)
+    reporter = alerts.Reporter(policy, sender=lambda *args: sent.append(args[1:]), now=lambda: NOW)
+    alerts.monitor_host(reporter)
+    assert [item[:2] for item in sent] == [("host:disk-0", "failure"), ("host:tls", "failure")]
+    assert sent[0][2]["free_bytes"] == "100" and sent[1][2]["remaining_days"] == "2.0"
+    assert str(tmp_path) not in str(sent)
+    alerts.monitor_host(reporter)
+    assert len(sent) == 2  # Cooldown applies without restarting a service.
+    disk_free[0], inode_free[0], days[0] = 800, 80, 60
+    alerts.monitor_host(reporter)
+    assert [item[:2] for item in sent[-2:]] == [
+        ("host:disk-0", "recovered"),
+        ("host:tls", "recovered"),
+    ]
+
+
+@pytest.mark.parametrize("free,total,inodes", [(500, 1000, 2), (50, 1000, 80), (300, 10000, 80)])
+def test_bytes_or_inode_exhaustion_alone_triggers_warning(
+    alerts, config, tmp_path, monkeypatch, free, total, inodes
+):
+    from types import SimpleNamespace
+
+    policy = host_policy(config, tmp_path)
+    policy["tls_host"] = None
+    monkeypatch.setattr(
+        alerts.shutil, "disk_usage", lambda path: SimpleNamespace(free=free, total=total)
+    )
+    monkeypatch.setattr(
+        alerts.os,
+        "statvfs",
+        lambda path: SimpleNamespace(f_files=100, f_favail=inodes),
+        raising=False,
+    )
+    sent = []
+    alerts.monitor_host(alerts.Reporter(policy, sender=lambda *args: sent.append(args)))
+    assert sent[0][1:3] == ("host:disk-0", "failure")
+
+
+def test_probe_failure_records_safe_error_not_provider_output(
+    alerts, config, tmp_path, monkeypatch
+):
+    policy = host_policy(config, tmp_path)
+
+    def disk(path):
+        raise OSError("SECRET path detail")
+
+    def tls(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 20, output="SECRET certificate error")
+
+    monkeypatch.setattr(alerts.shutil, "disk_usage", disk)
+    monkeypatch.setattr(alerts.subprocess, "run", tls)
+    sent = []
+    alerts.monitor_host(alerts.Reporter(policy, sender=lambda *args: sent.append(args)))
+    assert len(sent) == 2 and "SECRET" not in str(sent)
+    assert sent[0][3]["error_type"] == "OSError"
+    assert sent[1][3]["error_type"] == "TimeoutExpired"
+
+
+def test_real_tls_certificate_probe_verifies_hostname_and_trust(alerts, smtp, certificate):
+    cert, key = certificate
+    with smtp.smtp_server(cert, key) as server:
+        port = server.server_address[1]
+        expires = alerts.tls_expiration("localhost", port=port, ca_file=str(cert))
+        assert datetime.now(timezone.utc).timestamp() < expires
+        with pytest.raises(ssl.SSLCertVerificationError):
+            alerts.tls_expiration("localhost", port=port)
+
+
+def test_host_monitor_does_not_misclassify_delivery_error(alerts, config, tmp_path, monkeypatch):
+    policy = host_policy(config, tmp_path)
+    policy["tls_host"] = None
+    monkeypatch.setattr(alerts.shutil, "disk_usage", lambda path: (_ for _ in ()).throw(OSError()))
+    calls = []
+
+    def send(*args):
+        calls.append(args)
+        raise smtplib.SMTPException("SECRET delivery error")
+
+    with pytest.raises(smtplib.SMTPException):
+        alerts.monitor_host(alerts.Reporter(policy, sender=send))
+    assert len(calls) == 1
+    ledger = alerts.read_json(Path(policy["state_dir"]) / "alerts.json")
+    assert ledger["issues"]["host:disk-0"]["pending_failure"]
+    assert not ledger["issues"]["host:disk-0"].get("sent_at")
+
+
 def test_config_permission_and_symlink_guards(alerts, config, tmp_path):
     path = private_text(tmp_path / "config.json", json.dumps(config))
     assert alerts.load_config(path)["smtp_host"] == "127.0.0.1"

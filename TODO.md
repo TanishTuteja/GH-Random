@@ -154,8 +154,11 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   crawls/backups. An on-host failure handler cannot alert while its VM is down.
 - [x] Bound all production Docker logs and container resources; add a reviewed,
   optional host-wide journald limits example and operator commands.
-- [ ] Install/verify the journald policy on the VM. Monitor disk use, backup age,
-  last successful crawl, and TLS expiry/renewal failures.
+- [x] Add bounded host-local free-space/inode and verified TLS-expiry probes to
+  the hourly email monitor, including safe failure/recovery notices and tests.
+  Crawl/backup success-age monitoring is already implemented above.
+- [ ] Install/verify the journald policy and configure/test real disk/TLS probes
+  on the VM; verify certificate renewal and actual alert inbox delivery.
 - [x] Document recovery from stuck crawls, failed migrations, full disks, revoked
   GitHub credentials, and complete VM loss/replacement.
 - [x] Define host updates/reboots, secret rotation, and image cleanup in

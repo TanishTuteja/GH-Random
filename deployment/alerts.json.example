@@ -13,5 +13,11 @@
   "repeat_after_hours": 6,
   "crawl_max_age_hours": 12,
   "monitor_backups": false,
-  "backup_max_age_hours": 36
+  "backup_max_age_hours": 36,
+  "disk_paths": ["/"],
+  "disk_min_free_bytes": 2147483648,
+  "disk_min_free_percent": 10,
+  "disk_min_free_inode_percent": 5,
+  "tls_host": null,
+  "tls_warn_days": 14
 }
