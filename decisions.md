@@ -669,3 +669,21 @@ to encryption. Recovery is offline, bounded, path/link/overwrite-safe, and verif
 the inner dump before the existing new-database-only restore. age authenticates
 ciphertext, not its sender; retain explicit trusted-source acknowledgement.
 
+## 2026-10-18 — Public repository stewardship and deployment gates
+
+Enable and verify private GitHub vulnerability reporting before publishing its
+security-policy link; use GitHub's conduct-reporting tools rather than inventing
+a private maintainer email. Add issue forms, contributor/conduct/security guides,
+PR template and useful labels. Schedule weekly grouped minor/patch Dependabot
+proposals for uv, Actions, Docker and Compose, limit version-update PRs, and keep
+security updates prompt with no auto-merge. Add offline metadata/workflow pinning
+tests using an explicit development-only YAML parser dependency.
+
+The active Protect release tags ruleset blocks update/deletion of refs/tags/v*
+with no bypass actors; creating a new signed tag remains possible. Future fixes
+require a new version. Production environment jobs are restricted to protected
+branches and require owner review. Self-review is allowed for the solo maintainer
+but is not an independent audit. These GitHub settings were actually configured
+and read back via authenticated CLI, not inferred from repository files. OCI
+credentials and live deployment/acceptance remain separate manual setup.
+

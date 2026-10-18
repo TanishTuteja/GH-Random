@@ -54,6 +54,9 @@ The authoritative definitions live in app/core/filters.py.
 
 ## First-time local setup
 
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), the
+[code of conduct](CODE_OF_CONDUCT.md), and [private security reporting](SECURITY.md).
+
 Requires Python 3.12 (selected by `.python-version`), uv 0.13.1, Docker Desktop,
 and a configured GitHub App installation and private key. Install the pinned uv
 version using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/),

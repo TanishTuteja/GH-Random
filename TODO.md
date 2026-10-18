@@ -215,13 +215,18 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   deletion. Require zero reviewer approvals for the solo-maintainer workflow,
   with an empty bypass list so administrators follow the same rules.
   Verified via GitHub's ruleset API and protected-branch flag on 2026-10-17.
-- [ ] Protect release tags from accidental changes/deletion and document signed
-  tag creation and verification.
-- [ ] Add Dependabot for Python, GitHub Actions, and Docker base images; enable
-  dependency alerts/security updates and choose a manageable update cadence.
-- [ ] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue forms,
-  a PR template, and useful labels. Confirm the private vulnerability reporting
-  channel/contact before publishing the security policy.
+- [x] Protect `v*` tags against update/deletion with no bypass actors. Verify
+  the active tag ruleset and document signed tags/verification and new-version
+  fixes instead of moving released tags.
+- [x] Add weekly Dependabot proposals for uv, Actions, Docker and Compose,
+  grouping minor/patch updates and limiting open version PRs to two per ecosystem.
+  Enable/verify dependency alerts and automatic security-fix PRs; never auto-merge.
+- [x] Add contributor/conduct/security guidance, bug/feature/question forms,
+  PR template and useful maintenance/deployment/dependency/security/test labels.
+  Enable and verify private vulnerability reporting before publishing its link.
+- [x] Create GitHub's `production` environment with protected-branch restriction
+  and owner review. Allow self-review for the solo maintainer; this is not a
+  second-person audit. Actual deployment automation is tracked separately above.
 
 ## Infrastructure and account setup
 

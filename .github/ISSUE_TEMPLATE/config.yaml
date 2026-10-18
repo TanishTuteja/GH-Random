@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/TanishTuteja/GH-Random/security/advisories/new
+    about: Do not disclose vulnerabilities or credentials in public issues.
+  - name: Setup and operations documentation
+    url: https://github.com/TanishTuteja/GH-Random/blob/main/README.md
+    about: Local setup, tests, crawler commands, releases and production runbooks.
