@@ -705,3 +705,14 @@ but is not an independent audit. These GitHub settings were actually configured
 and read back via authenticated CLI, not inferred from repository files. OCI
 credentials and live deployment/acceptance remain separate manual setup.
 
+## 2026-10-18 — Guard supported runtime lines and duplicated image pins
+
+The first Dependabot run proposed Python 3.12 to 3.14 as a semver-minor update.
+That does not preserve this project's selected interpreter line. Ignore Python
+minor/major proposals and PostgreSQL majors until a deliberate migration review.
+Keep ordinary patch/digest proposals and reviewed same-major proxy/admin updates.
+Add invariant tests tying Docker Python to .python-version and lint/type targets,
+uv to its project pin, and production defaults to env/CI/development image pins.
+Negative fixtures prove inconsistent single-file updates fail. Green bot checks
+do not authorize automatic adoption of a different runtime or database major.
+

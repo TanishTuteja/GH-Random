@@ -584,8 +584,9 @@ The signing public key must be registered on GitHub and the tag must show
 **Verified** there. Local `git verify-tag v0.1.0` additionally requires an
 appropriate SSH allowed-signers file; a missing local trust file does not mean
 GitHub rejected the signature. Never create the tag through the release UI,
-which would bypass this signing step. Protect `v*` tags against updates/deletion
-before the first release; that repository setting is still a deployment TODO.
+which would bypass this signing step. The active release-tag ruleset blocks
+updates/deletion of `v*` with no bypass actors (verified on 2026-10-18).
+Fixes require a new version; never move or replace a published release tag.
 
 In GitHub → Releases → Draft a new release, select the **existing** `v0.1.0`
 tag, write release notes, leave prerelease unchecked, and publish. The `Release`
@@ -1121,6 +1122,12 @@ and linux/amd64 support, and update pins together in Dockerfile, production
 Compose defaults, compose.env.example and CI's PostgreSQL service as applicable.
 Use a focused PR and require all three CI jobs, including fresh migrations,
 proxy/resource checks, restore, redeploy and rollback rehearsals.
+
+Offline policy tests also keep the Docker interpreter aligned with
+`.python-version`, Ruff/Pyright, the selected uv version, and the duplicated
+PostgreSQL/Caddy/pgAdmin pins. Dependabot ignores Python minor/major and
+PostgreSQL major upgrades until a separate reviewed migration changes the
+supported runtime/data policy; ordinary tag/digest updates still require review.
 
 Python/uv updates ship in a new signed application release. PostgreSQL/Caddy
 updates also require deliberate host maintenance: the deploy script refuses an
