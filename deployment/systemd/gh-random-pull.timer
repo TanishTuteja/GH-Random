@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for approved GH Random deployments once per minute
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+Unit=gh-random-pull.service
+
+[Install]
+WantedBy=timers.target

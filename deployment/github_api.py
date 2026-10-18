@@ -186,6 +186,7 @@ class Credential:
             self.cached, self.expires = token, instant.timestamp()
         if not valid_token(token):
             raise GitHubError("Missing or invalid GitHub credential")
+        assert isinstance(token, str)
         return token
 
 
