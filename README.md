@@ -603,6 +603,9 @@ workflow then:
    Initial releases are ARM64-only, not AMD64 images for Windows PCs.
 4. Pulls the **published digest**, then runs the isolated production Compose,
    migration, crawler-status, and web/API checks against that exact image.
+   It verifies the actual OCI provenance/SBOM graph and signs image and archive
+   provenance using GitHub's OIDC identity. See the
+   [supply-chain verification policy](.github/SUPPLY_CHAIN.md) for checks and limits.
 5. Attaches `image-digest.txt`, `release.json`, `SHA256SUMS`, and
    `gh-random-v0.1.0-deployment.tar.gz` only after successful smoke tests.
    The archive contains matching Compose/Caddy files, safe configuration
@@ -631,10 +634,14 @@ package visibility/anonymous access still need that first-release verification.
 
 On the Linux VM, download these four release assets into a new version-specific
 directory. Verify before extracting (checksums detect corruption, not a malicious
-replacement of both assets and checksums):
+replacement of both assets and checksums). Replace `VERIFIED_COMMIT` below with
+the independently verified signed tag's full commit SHA, not an untrusted value
+read only from the downloaded archive. GitHub CLI is needed for attestation
+verification; see the automation guide for its required policy options:
 
 ~~~sh
 sha256sum --check SHA256SUMS
+gh attestation verify gh-random-v0.1.0-deployment.tar.gz --repo TanishTuteja/GH-Random --signer-workflow TanishTuteja/GH-Random/.github/workflows/release.yaml --source-ref refs/tags/v0.1.0 --source-digest VERIFIED_COMMIT --signer-digest VERIFIED_COMMIT --deny-self-hosted-runners
 tar -xzf gh-random-v0.1.0-deployment.tar.gz
 cat image-digest.txt
 cat release.json
@@ -649,7 +656,15 @@ PostgreSQL, and Caddy base-image digest pins are still tracked separately.
 
 ### Deploying a verified release
 
-The host needs Python 3.12+, Docker Engine, and Docker Compose. No host virtualenv,
+For approved outbound-only automated deployments, follow
+[the deployment automation guide](deployment/AUTOMATION.md). Dispatching a release
+requires production approval; the VM independently verifies the request and
+signed assets before applying it. Only the VM can report actual deployment
+success. GitHub does not need inbound SSH or a production self-hosted runner.
+Installing the puller, its dedicated App and private configuration remains a
+manual VM setup step; publishing a release does not start a deployment.
+
+The manual path below needs Python 3.12+, Docker Engine, and Docker Compose. No host virtualenv,
 PostgreSQL client, or Docker socket mounted into application containers is needed.
 Use a trusted release's script, not one downloaded separately from moving `main`.
 Keep each extracted release at a stable, version-specific absolute path, for
@@ -1014,11 +1029,13 @@ Root identity and remaining host access still make this defense in depth, not an
 untrusted-code sandbox. Install/upgrade the host script and units deliberately
 from matching release files; deployments do not silently change host policy.
 
-An **independent external monitor is still required** for public HTTPS downtime,
-missed monitoring/backup heartbeats, and complete VM/network/mail-provider failure.
-The on-host timer cannot report its own powered-off VM or deliver through a dead
-mail provider. Configure that external service and prove its email delivery before
-public launch; no external monitor or live SMTP provider is provisioned here.
+The [independent monitoring guide](deployment/MONITORING.md) describes the
+GitHub-hosted checker for public HTTPS/API downtime and missing successful
+host/crawl/backup telemetry. It sends email independently of the VM, with durable
+failure/recovery state. The protected `monitoring` environment exists, but the
+workflow stays disabled until real hostname, telemetry and SMTP configuration
+and inbox acceptance are complete. It cannot detect GitHub itself being down or
+deliver through a dead mail provider. No live monitoring service is claimed here.
 
 The same hourly monitor can warn about free disk bytes, free-space percentage
 and (on Linux) free inode percentage. In private alerts.json, `disk_paths` accepts

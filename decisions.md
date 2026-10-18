@@ -716,3 +716,36 @@ uv to its project pin, and production defaults to env/CI/development image pins.
 Negative fixtures prove inconsistent single-file updates fail. Green bot checks
 do not authorize automatic adoption of a different runtime or database major.
 
+## 2026-10-18 — Outbound deployment authorization and publisher identity
+
+Use a protected, manually approved main-branch Actions job to queue a deployment,
+then a VM-side puller over outbound HTTPS. Do not expose SSH/webhooks or install
+a privileged self-hosted Actions runner. A GitHub Deployment payload alone is not
+approval: bind it to the successful queue job's immutable run/attempt artifact
+and the installed reviewed workflow. Report success only after the VM's existing
+backup/migrate/restart/smoke path succeeds; preserve prior files/images and never
+replay a claimed migration after a crash. Cancellation cannot abort active DDL.
+
+Use a separate repository-scoped operations App; do not expand the crawler App.
+Verify downloaded root scripts against signed source Git blobs and GitHub-signed
+archive/image attestations with exact repository, workflow, source and tag policy.
+Build releases from an immutable remote Git context. Independently inspect the
+actual content-addressed ARM64 OCI graph, BuildKit provenance and SPDX inventory;
+matching labels and unsigned metadata do not authenticate a publisher. These
+checks do not claim hermetic builds, vulnerability freedom or a SLSA level.
+
+## 2026-10-18 — Independent email monitoring without another paid service
+
+Use GitHub-hosted scheduled checks, disabled until live acceptance, for public
+HTTPS/API availability and compact success-only telemetry posted by the VM's
+operations App. Publish only timestamps, not data, identifiers, paths or logs.
+Preserve prior proven successes when a later operation fails. The external
+checker validates author, anchor, newest status, schema and timestamp freshness.
+
+Keep external SMTP secrets in a separate protected-branches-only monitoring
+environment with no reviewer delay, not repository-wide secrets or production's
+approval gate. Store durable safe incident codes/pending delivery in a dedicated
+operations issue, with reminders and recovery; SMTP acceptance is not inbox
+proof. GitHub scheduling/outages and the SMTP provider remain shared failure
+domains. Real hostname/App/provider setup and outage tests await the live stack.
+
