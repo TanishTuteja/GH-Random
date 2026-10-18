@@ -1,0 +1,49 @@
+name: External monitoring
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-monitoring
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Independent site and success checks
+    if: ${{ github.ref == 'refs/heads/main' && vars.MONITORING_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: monitoring
+      deployment: false
+    permissions:
+      contents: read
+      deployments: read
+      issues: write
+    steps:
+      - name: Check out trusted default-branch code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Validate configuration and check public site and durable success telemetry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_MONITOR_ORIGIN: ${{ vars.MONITORING_ORIGIN }}
+          GH_MONITOR_DEPLOYMENT: ${{ vars.MONITORING_DEPLOYMENT_ID }}
+          GH_MONITOR_CREATOR: ${{ vars.MONITORING_CREATOR_ID }}
+          GH_MONITOR_ISSUE: ${{ vars.MONITORING_ISSUE_NUMBER }}
+          GH_MONITOR_SMTP_CONFIG: ${{ secrets.MONITORING_SMTP_CONFIG }}
+          GH_MONITOR_SMTP_PASSWORD: ${{ secrets.MONITORING_SMTP_PASSWORD }}
+        run: python .github/scripts/check_external_monitor.py

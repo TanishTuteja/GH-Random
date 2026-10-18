@@ -1,0 +1,14 @@
+{
+  "repository": "TanishTuteja/GH-Random",
+  "credential": {
+    "type": "app",
+    "app_id": 1,
+    "client_id": "replace-with-deployment-app-client-id",
+    "installation_id": 1,
+    "private_key_file": "/etc/gh-random/github-deploy-private-key.pem"
+  },
+  "deployment_id": 1,
+  "telemetry_creator_id": 1,
+  "deployment_state_dir": "/var/lib/gh-random/deployments",
+  "alerts_state_dir": "/var/lib/gh-random/alerts"
+}
