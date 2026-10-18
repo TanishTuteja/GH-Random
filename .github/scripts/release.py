@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_JOBS = {"Python checks", "PostgreSQL tests", "Production containers"}
 DEPLOYMENT_FILES = (
+    ".github/workflows/deploy.yaml",
     "compose.production.yaml",
     "compose.pgadmin.yaml",
     "deployment/pgadmin.env.example",
@@ -33,6 +34,17 @@ DEPLOYMENT_FILES = (
     "deployment/caddy.env.example",
     "deployment/database_backup.py",
     "deployment/deploy.py",
+    "deployment/github_api.py",
+    "deployment/external_monitor.py",
+    "deployment/telemetry.json.example",
+    "deployment/MONITORING.md",
+    "deployment/systemd/gh-random-telemetry.service",
+    "deployment/systemd/gh-random-telemetry.timer",
+    "deployment/pull.py",
+    "deployment/pull.json.example",
+    "deployment/AUTOMATION.md",
+    "deployment/systemd/gh-random-pull.service",
+    "deployment/systemd/gh-random-pull.timer",
     "deployment/crawler.py",
     "deployment/notifications.py",
     "deployment/backup.py",
