@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem, not a security vulnerability.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vulnerabilities belong in [private reporting](https://github.com/TanishTuteja/GH-Random/security/advisories/new).
+        Exclude secrets, personal data, raw .env files and unreviewed logs.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release/commit; say whether this is a local setup.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include filters and minimal steps using non-sensitive data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redacted screenshots/errors are welcome; check for secrets first.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser/OS or relevant Python/Docker version.
