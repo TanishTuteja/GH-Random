@@ -885,6 +885,34 @@ observable. Install/configure the email handler and hourly monitor below before
 enabling production crawling. Live VM timer installation, reboot behavior, real
 GitHub authentication, and inbox delivery remain acceptance tasks.
 
+### Explicit live ARM64 GitHub App authentication smoke
+
+Unlike CI, `.github/scripts/check_github_auth.py` uses your real App credentials
+and contacts GitHub. From an activated local development environment, explicitly
+select a trusted ARM64 image and the private App env file. For a local rehearsal:
+
+~~~powershell
+docker build --platform linux/arm64 --tag gh-random:arm64-auth-smoke .
+python .github/scripts/check_github_auth.py --image gh-random:arm64-auth-smoke --env-file .env
+~~~
+
+After publication, prefer the pulled immutable ARM64 GHCR release digest instead
+of a local tag. The harness passes only App identifiers/key, never DATABASE_URL
+or the entire env file. It stages the key through stdin in a uniquely labelled
+temporary Docker volume as root-owned mode 0600 (Windows bind mounts do not
+model Unix ownership), then mounts it read-only into a root ARM64 role with all
+capabilities dropped, a read-only root, no published ports and bounded resources.
+The credential-staging container has no network; the probe has outbound access.
+
+It obtains an installation token, checks authenticated HTTPS, revokes that token
+on normal completion, and removes only labelled test containers/key volume even
+after a Docker-client timeout. No crawl/database operation occurs. It suppresses
+captured credential-bearing output. If Docker cleanup fails, inspect the exact
+reported owned volume before retrying; deletion is not a forensic secure erase.
+Abrupt host/controller loss can leave temporary resources and a short-lived token
+until cleanup/expiry; no revocation guarantee is made for that case. Real VM
+bind permissions, network/firewall and native host acceptance still need checking.
+
 ### Email failure alerts and missing-success monitoring
 
 Use `deployment/notifications.py` (host Python 3.12+, standard library only) for

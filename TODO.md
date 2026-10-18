@@ -114,8 +114,11 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   missing-success monitor with durable retries, cooldowns and recovery notices.
 - [ ] Configure SMTP and verify real failure/recovery/staleness emails on the VM;
   Docker outages may require operator recovery of the recorded managed child.
-- [ ] Smoke-test real GitHub App authentication from the hardened ARM64 crawler
-  container, including root-owned key access and outbound network connectivity.
+- [x] Smoke-test real App authentication in a locally built hardened ARM64 role:
+  root-owned mode-0600 key, read-only mount/root, outbound authenticated HTTPS,
+  token revocation and owned-resource cleanup. No database/crawl was involved.
+- [ ] Recheck the real VM's key bind ownership/access and outbound network path;
+  local Docker volume staging does not establish OCI host permissions/firewalls.
 
 ### 6. Backups, alerts, and operations
 
@@ -260,7 +263,9 @@ that OCI resources or GitHub account settings exist.
 ## First-release acceptance sequence
 
 - [ ] Finish CI/protection and merge the release candidate to `main`.
-- [ ] Rehearse deployment, restore, and rollback with disposable data.
+- [x] Rehearse deployment, encrypted/local restore and same-schema rollback with
+  disposable data, including discovery and failure guards, in native ARM64 CI.
+  Production/off-site acceptance remains separately unchecked above.
 - [ ] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
   the expected ARM64 image and immutable digest.
 - [ ] Deploy that digest and matching files, back up as appropriate, migrate

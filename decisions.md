@@ -3,6 +3,24 @@
 This file records decisions that materially shape the MVP, including choices made
 autonomously while completing the project.
 
+## 2026-10-18 — Verify real App authentication without a catalog crawl
+
+Add an explicitly invoked local smoke harness, not a credential-bearing CI job.
+Build/run the locked production image for ARM64 and pass only App identifiers
+and its key, never the whole private env file or database credentials. Windows
+bind permissions are not Unix ownership, so stage the key through stdin in a
+uniquely labelled ephemeral Docker volume as root:root mode 0600 with no network.
+Mount it read-only in a capability-dropped, read-only-root, resource-bounded ARM64
+role; authenticate, make an authorized HTTPS probe, revoke the installation
+token on normal completion and remove only invocation-owned resources.
+
+The real local smoke succeeded, including revocation and key-volume cleanup,
+without DB access or a crawl. Full local tests/checks also passed. This proves
+the container/authentication component, not a real OCI bind ACL, firewall or full
+crawl. Do not log credentials or captured container errors. Cleanup failure is
+an explicit error; abrupt host loss may leave a temporary volume/token until
+operator cleanup/expiry, and removing the volume is not forensic secure erase.
+
 ## 2026-10-18 — Ship explicit incident and maintenance runbooks
 
 Include deployment/OPERATIONS.md in the immutable release bundle, alongside the
