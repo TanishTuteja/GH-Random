@@ -72,7 +72,7 @@ def test_asset_redirect_drops_api_credential(api_tools, monkeypatch):
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
     assert (
-        api_tools.request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
+        api_tools._request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
         == b"archive"
     )
     assert requests[0].get_header("Authorization") == "Bearer secret"
@@ -95,7 +95,7 @@ def test_untrusted_asset_redirect_rejected(api_tools, monkeypatch, location):
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
     with pytest.raises(api_tools.GitHubError, match="Untrusted"):
-        api_tools.request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
+        api_tools._request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
 
 
 def test_json_writes_are_bounded_and_errors_redacted(api_tools, monkeypatch):
@@ -106,7 +106,7 @@ def test_json_writes_are_bounded_and_errors_redacted(api_tools, monkeypatch):
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
     with pytest.raises(api_tools.GitHubError, match="HTTP 403") as error:
-        api_tools.request(
+        api_tools._request(
             "/repos/Owner/Repo/deployments/1/statuses",
             "SECRET",
             method="POST",
@@ -122,7 +122,7 @@ def test_response_limit_and_network_diagnostics(api_tools, monkeypatch):
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
     with pytest.raises(api_tools.GitHubError, match="size limit"):
-        api_tools.request("/repos/Owner/Repo/x", "secret", limit=2)
+        api_tools._request("/repos/Owner/Repo/x", "secret", limit=2)
 
     class Broken:
         def open(self, request, timeout):
@@ -130,7 +130,7 @@ def test_response_limit_and_network_diagnostics(api_tools, monkeypatch):
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Broken())
     with pytest.raises(api_tools.GitHubError) as error:
-        api_tools.request("/repos/Owner/Repo/x", "secret")
+        api_tools._request("/repos/Owner/Repo/x", "secret")
     assert "secret" not in str(error.value)
 
 
@@ -243,3 +243,16 @@ def test_bool_app_id_and_oversize_token_file_rejected(api_tools, tmp_path):
     )
     with pytest.raises(api_tools.GitHubError, match="size limit"):
         credential.token()
+
+
+def test_dns_stall_is_bounded_without_canceling_any_deployment(api_tools, monkeypatch):
+    def stalled(command, **kwargs):
+        assert command[-1] == "http-worker"
+        assert "secret" not in command
+        assert kwargs["timeout"] == 45
+        raise api_tools.subprocess.TimeoutExpired(command, 45, output=b"secret diagnostic")
+
+    monkeypatch.setattr(api_tools.subprocess, "run", stalled)
+    with pytest.raises(api_tools.GitHubError, match="timed out") as error:
+        api_tools.request("/repos/Owner/Repo/x", "secret")
+    assert "secret" not in str(error.value)

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -50,11 +51,7 @@ def validate_path(path: str) -> None:
 
 
 def valid_token(token: object) -> bool:
-    return (
-        isinstance(token, str)
-        and 0 < len(token) <= 8192
-        and not any(char.isspace() for char in token)
-    )
+    return isinstance(token, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,8192}", token) is not None
 
 
 def private_path(value: object) -> Path:
@@ -174,6 +171,8 @@ class Credential:
                 },
             )
             value = json.loads(response)
+            if not isinstance(value, dict):
+                raise GitHubError("Invalid installation credential response")
             token = value.get("token")
             expiry = value.get("expires_at")
             if not valid_token(token) or not isinstance(expiry, str):
@@ -191,6 +190,43 @@ class Credential:
 
 
 def request(
+    path: str,
+    token: str,
+    *,
+    method: str = "GET",
+    payload: object = None,
+    limit: int = MAX_JSON,
+    timeout: int = 30,
+    binary: bool = False,
+) -> bytes:
+    """A killable HTTP-only child bounds DNS/TLS/read time without touching DDL."""
+    validate_path(path)
+    try:
+        child = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "http-worker"],
+            input=json.dumps(
+                {
+                    "path": path,
+                    "token": token,
+                    "method": method,
+                    "payload": payload,
+                    "limit": limit,
+                    "timeout": timeout,
+                    "binary": binary,
+                }
+            ).encode(),
+            capture_output=True,
+            timeout=timeout + 15,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        raise GitHubError("GitHub HTTP worker unavailable or timed out") from None
+    if child.returncode or len(child.stdout) > limit:
+        raise GitHubError("GitHub HTTP worker rejected the request")
+    return child.stdout
+
+
+def _request(
     path: str,
     token: str,
     *,
@@ -281,3 +317,14 @@ class GitHubAPI:
         return request(
             path, self.credential.token(), binary=True, limit=limit, timeout=self.timeout
         )
+
+
+if __name__ == "__main__":
+    try:
+        if sys.argv[1:] != ["http-worker"]:
+            raise ValueError("Internal HTTP worker only")
+        parameters = json.load(sys.stdin)
+        sys.stdout.buffer.write(_request(**parameters))
+    except Exception:
+        # API bodies, credentials and signed download URLs never become logs.
+        raise SystemExit(1) from None
