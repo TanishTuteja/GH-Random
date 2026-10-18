@@ -28,6 +28,11 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /
+    # Python minor releases change the interpreter, not just a patch. Keep the
+    # selected .python-version line until a deliberate runtime migration PR.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     schedule:
       interval: weekly
       day: monday
@@ -41,6 +46,10 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: docker-compose
     directory: /
+    # A new PostgreSQL major needs a reviewed data upgrade/restore plan.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: weekly
       day: monday

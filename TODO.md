@@ -26,6 +26,9 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   Pin uv and use Python 3.12 across the supported environments.
 - [x] Pin reviewed Python, PostgreSQL, and Caddy images to immutable digests and
   document how updates will be reviewed.
+- [x] Enforce selected Python/tool versions and synchronized production/CI/env
+  image pins in offline tests. Prevent automatic Python minor/major and database
+  major proposals from silently changing the supported runtime/data policy.
 
 ### 2. Production Compose and configuration
 
@@ -233,8 +236,9 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
 
 ## Infrastructure and account setup
 
-All items require setup or confirmation. Repository files alone cannot establish
-that OCI resources or GitHub account settings exist.
+Unchecked items require setup or confirmation. Repository files alone cannot
+establish that OCI resources exist; completed GitHub settings were read back
+through authenticated APIs, as recorded above.
 
 - [ ] Create/verify OCI tenancy and MFA, choose the home region, and confirm
   current Always Free quotas, ARM availability, storage, and network costs.
@@ -257,8 +261,11 @@ that OCI resources or GitHub account settings exist.
   URL-encode reserved password characters in the SQLAlchemy database URL.
 - [ ] Configure Object Storage, restricted backup identity, encryption/recovery
   access, lifecycle rules, and alert destination within free quotas.
-- [ ] Configure GitHub branch/tag rules, Actions/package permissions, production
-  environment, and deployment credentials once workflows exist.
+- [x] Configure and verify GitHub main/tag protection, security reporting,
+  dependency maintenance and protected production environment/review settings.
+- [ ] Configure private VM deployment credentials/scopes and validate the live
+  deployment path after automation and OCI setup; package publication/access
+  acceptance is tracked independently in section 7.
 
 ## First-release acceptance sequence
 
