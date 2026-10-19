@@ -435,6 +435,11 @@ def test_cancel_rechecked_before_claim_and_terminal_delivery_never_replays(
     else:
         pull_tools.execute(api, config, request)
         assert len(executed) == 1 and api.posts[-1][1]["state"] == "success"
+        extracted = next((tmp_path / "releases").iterdir())
+        assert (extracted / "Caddyfile").stat().st_mode & 0o004
+        if pull_tools.os.name == "posix":
+            assert extracted.stat().st_mode & 0o077 == 0
+            assert (extracted / "deployment/deploy.py").stat().st_mode & 0o077 == 0
         assert "--backup-config" in executed[0] and "--alerts-config" in executed[0]
         pull_tools.execute(api, config, request)
         assert len(executed) == 1

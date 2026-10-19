@@ -403,6 +403,11 @@ def execute(api: GitHubAPI, config: dict[str, Any], deployment: dict[str, Any]) 
         target.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         with private_file(target) as output:
             output.write(data)
+        # This public config is bind-mounted into Caddy's unprivileged UID.
+        # Keep executable deployment tools/private examples restricted; Docker
+        # resolves the mode-0700 parent directory as the trusted host daemon.
+        if name == "Caddyfile":
+            target.chmod(0o644)
     sync_directory(root)
     # Approval can be canceled while downloads/crypto run. Recheck at the last safe boundary.
     verify_request(api, get(api, f"deployments/{deployment['id']}"))
