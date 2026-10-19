@@ -816,3 +816,13 @@ verified full anonymous digest pull, and explicitly chose to configure Gmail
 with OCI setup. Leave App Passwords, private sender/recipient configuration and
 real inbox acceptance unchecked; do not collect secrets or enable monitoring now.
 
+## 2026-10-20 — Keep the Caddy upgrade and deployment template synchronized
+
+Update the deployment environment template to the same Caddy 2.11 immutable image
+index as production Compose. The container rehearsal explicitly loads this
+template, so leaving its old override would test Caddy 2.10 rather than the
+proposed upgrade. Keep the existing shared-pin policy tests; do not weaken them
+to accept divergent versions. This changes source for a future release, not the
+already published v0.1.0 archive or any live deployment. Existing installations
+must still use the documented separate proxy-maintenance procedure.
+
