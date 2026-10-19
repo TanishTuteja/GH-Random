@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import hashlib
 import io
 import json
@@ -205,6 +206,12 @@ def verify_request(
 def verify_bundle(
     api: GitHubAPI, payload: dict[str, Any], raw: bytes
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
+    require(len(raw) <= MAX_ARCHIVE, "Compressed deployment archive too large")
+    # Tarfile processes PAX/GNU extension headers before yielding a member.
+    # Bound the ENTIRE expanded stream, including those headers, first.
+    with gzip.GzipFile(fileobj=io.BytesIO(raw)) as compressed:
+        expanded = compressed.read(MAX_ARCHIVE + 1)
+    require(len(expanded) <= MAX_ARCHIVE, "Deployment archive expanded too large")
     source = source_release(api, payload["tag"])
     require(
         source["commit"] == payload["commit"] and source["release"]["id"] == payload["release_id"],
@@ -212,7 +219,7 @@ def verify_bundle(
     )
     files: dict[str, bytes] = {}
     total = 0
-    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+    with tarfile.open(fileobj=io.BytesIO(expanded), mode="r:") as archive:
         for member in archive:
             path = PurePosixPath(member.name)
             require(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import gzip
 import hashlib
 import importlib
 import io
@@ -288,6 +289,23 @@ def test_archive_never_extracts_unsafe_paths(pull_tools, published, path):
     files[path] = b"bad"
     with pytest.raises(ValueError, match="Unsafe"):
         pull_tools.verify_bundle(api, request["payload"], archive(files))
+
+
+def test_pax_gzip_bomb_is_bounded_before_tar_parser(pull_tools, published, monkeypatch):
+    api, request, _ = published
+    member = tarfile.TarInfo("pax-header")
+    member.type = tarfile.XHDTYPE
+    member.size = 64 * 1024
+    raw = gzip.compress(member.tobuf() + b"x" * member.size)
+    monkeypatch.setattr(pull_tools, "MAX_ARCHIVE", 4096)
+    monkeypatch.setattr(
+        pull_tools.tarfile,
+        "open",
+        lambda *args, **kwargs: pytest.fail("Tar parsed before decompression cap"),
+    )
+    assert len(raw) < 4096
+    with pytest.raises(ValueError, match="expanded too large"):
+        pull_tools.verify_bundle(api, request["payload"], raw)
 
 
 @pytest.mark.parametrize(
