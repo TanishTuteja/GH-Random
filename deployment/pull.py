@@ -173,7 +173,10 @@ def verify_request(
         deployment["task"] == TASK
         and deployment["environment"] == "production"
         and deployment["creator"]["login"] == "github-actions[bot]"
-        and deployment["performed_via_github_app"]["slug"] == "github-actions",
+        and (
+            deployment.get("performed_via_github_app") is None
+            or deployment["performed_via_github_app"].get("slug") == "github-actions"
+        ),
         "Not an Actions production request",
     )
     payload = deployment["payload"]
@@ -341,13 +344,26 @@ def status(api: GitHubAPI, identifier: int, state: str, description: str, *, url
     return api.post(api.base + f"/deployments/{identifier}/statuses", value)
 
 
-def acknowledged(record: dict[str, Any], app_id: int) -> bool:
+def vm_status(value: Any, app_id: int, creator_id: int) -> bool:
+    if not isinstance(value, dict):
+        return False
+    creator, app = value.get("creator"), value.get("performed_via_github_app")
+    return (
+        isinstance(creator, dict)
+        and type(creator.get("id")) is int
+        and creator["id"] == creator_id
+        and (app is None or isinstance(app, dict) and app.get("id") == app_id)
+    )
+
+
+def acknowledged(record: dict[str, Any], app_id: int, creator_id: int) -> bool:
     value = record.get("reported")
     return (
         isinstance(value, dict)
         and value.get("state") == record["state"]
         and value.get("description") == record["description"]
         and value.get("app_id") == app_id
+        and value.get("creator_id") == creator_id
         and type(value.get("status_id")) is int
         and value["status_id"] > 0
     )
@@ -363,7 +379,8 @@ def report_record(
     force: bool = False,
 ) -> None:
     app_id = config["credential"]["app_id"]
-    if not force and acknowledged(record, app_id):
+    creator_id = config["creator_id"]
+    if not force and acknowledged(record, app_id, creator_id):
         return
     response = status(api, identifier, record["state"], record["description"], url=config["url"])
     require(
@@ -371,7 +388,7 @@ def report_record(
         and type(response.get("id")) is int
         and response["id"] > 0
         and response.get("state") == record["state"]
-        and response.get("performed_via_github_app", {}).get("id") == app_id,
+        and vm_status(response, app_id, creator_id),
         "Deployment status was not acknowledged by the dedicated VM App",
     )
     # A crash after GitHub acceptance but before this atomic save may duplicate
@@ -380,6 +397,7 @@ def report_record(
         "state": record["state"],
         "description": record["description"],
         "app_id": app_id,
+        "creator_id": creator_id,
         "status_id": response["id"],
     }
     atomic_json(journal, record)
@@ -391,6 +409,10 @@ def load_config(path: Path) -> dict[str, Any]:
     config = json.loads(path.read_text())
     require(REPOSITORY.fullmatch(config.get("repository", "")) is not None, "Invalid repository")
     require(config.get("credential", {}).get("type") == "app", "Dedicated deployment App required")
+    require(
+        type(config.get("creator_id")) is int and config["creator_id"] > 0,
+        "Expected deployment App bot user ID required",
+    )
     for key in (
         "state_dir",
         "release_dir",
@@ -446,7 +468,9 @@ def execute(
         return
     payload = verify_request(api, deployment)
     require(
-        payload.get("app_id") == config["credential"]["app_id"], "Request targets another VM App"
+        payload.get("app_id") == config["credential"]["app_id"]
+        and payload.get("creator_id") == config["creator_id"],
+        "Request targets another VM App",
     )
     release = get(api, f"releases/{payload['release_id']}")
     assets = get(api, f"releases/{release['id']}/assets?per_page=100")
@@ -561,7 +585,7 @@ def poll(config: dict[str, Any]) -> None:
                 latest = max(latest, identifier)
             if drained < 20 and (
                 record["state"] == "in_progress"
-                or not acknowledged(record, config["credential"]["app_id"])
+                or not acknowledged(record, config["credential"]["app_id"], config["creator_id"])
             ):
                 execute(api, config, {"id": identifier})
                 drained += 1
@@ -576,8 +600,9 @@ def poll(config: dict[str, Any]) -> None:
                 if (
                     not statuses
                     or statuses[0]["state"] != record["state"]
-                    or statuses[0].get("performed_via_github_app", {}).get("id")
-                    != config["credential"]["app_id"]
+                    or not vm_status(
+                        statuses[0], config["credential"]["app_id"], config["creator_id"]
+                    )
                     or record["state"] == "in_progress"
                 ):
                     execute(api, config, deployment, force_report=True)
@@ -628,7 +653,10 @@ def queue(api: GitHubAPI, tag: str, output: Path) -> int:
     )
     source = source_release(api, tag)
     app_id = int(os.environ.get("PRODUCTION_DEPLOYMENT_APP_ID", "0"))
-    require(app_id > 0, "Configure the dedicated VM App ID before queueing production")
+    creator_id = int(os.environ.get("PRODUCTION_DEPLOYMENT_CREATOR_ID", "0"))
+    require(
+        app_id > 0 and creator_id > 0, "Configure the dedicated VM App and bot IDs before queueing"
+    )
     payload = {
         "format": 1,
         "tag": tag,
@@ -638,6 +666,7 @@ def queue(api: GitHubAPI, tag: str, output: Path) -> int:
         "run_id": int(os.environ["GITHUB_RUN_ID"]),
         "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
         "app_id": app_id,
+        "creator_id": creator_id,
     }
     deployment = api.post(
         api.base + "/deployments",
@@ -661,7 +690,8 @@ def queue(api: GitHubAPI, tag: str, output: Path) -> int:
 
 def wait(api: GitHubAPI, identifier: int, *, seconds: int = 7200) -> None:
     app_id = int(os.environ.get("PRODUCTION_DEPLOYMENT_APP_ID", "0"))
-    require(app_id > 0, "Expected VM App ID required")
+    creator_id = int(os.environ.get("PRODUCTION_DEPLOYMENT_CREATOR_ID", "0"))
+    require(app_id > 0 and creator_id > 0, "Expected VM App and bot user IDs required")
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         statuses = get(api, f"deployments/{identifier}/statuses?per_page=1")
@@ -670,7 +700,7 @@ def wait(api: GitHubAPI, identifier: int, *, seconds: int = 7200) -> None:
                 time.sleep(30)
                 continue
             require(
-                statuses[0].get("performed_via_github_app", {}).get("id") == app_id,
+                vm_status(statuses[0], app_id, creator_id),
                 "Status is not from the dedicated VM App",
             )
             state = statuses[0]["state"]

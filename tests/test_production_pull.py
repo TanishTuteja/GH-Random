@@ -45,7 +45,12 @@ class API:
     def post(self, path, payload):
         self.posts.append((path, payload))
         if path.endswith("/statuses"):
-            return {"id": 100, "state": payload["state"], "performed_via_github_app": {"id": 77}}
+            return {
+                "id": 100,
+                "state": payload["state"],
+                "creator": {"id": 777},
+                "performed_via_github_app": None,
+            }
         return {"id": 100}
 
 
@@ -62,6 +67,7 @@ def approved(pull_tools):
         "run_id": 10,
         "run_attempt": 1,
         "app_id": 77,
+        "creator_id": 777,
     }
     request = {
         "id": 100,
@@ -69,7 +75,7 @@ def approved(pull_tools):
         "environment": "production",
         "sha": sha,
         "creator": {"login": "github-actions[bot]"},
-        "performed_via_github_app": {"slug": "github-actions"},
+        "performed_via_github_app": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
@@ -129,6 +135,15 @@ def test_request_must_match_run_bound_approved_artifact(pull_tools, approved):
     assert pull_tools.verify_request(api, request) == request["payload"]
     request["payload"]["tag"] = "v0.2.0"
     with pytest.raises(ValueError, match="Approval/request mismatch"):
+        pull_tools.verify_request(api, request)
+
+
+def test_optional_actions_app_metadata_cannot_override_creator_or_receipt(pull_tools, approved):
+    api, request = approved
+    assert request["performed_via_github_app"] is None
+    assert pull_tools.verify_request(api, request) == request["payload"]
+    request["performed_via_github_app"] = {"slug": "another-app"}
+    with pytest.raises(ValueError, match="Actions production request"):
         pull_tools.verify_request(api, request)
 
 
@@ -426,7 +441,12 @@ def test_claimed_interrupted_request_is_not_reexecuted(pull_tools, approved, tmp
     )
     pull_tools.execute(
         api,
-        {"state_dir": str(tmp_path), "url": "https://example.com", "credential": {"app_id": 77}},
+        {
+            "state_dir": str(tmp_path),
+            "url": "https://example.com",
+            "credential": {"app_id": 77},
+            "creator_id": 777,
+        },
         request,
     )
     assert json.loads(journal.read_text())["state"] == "error"
@@ -460,9 +480,30 @@ def test_puller_uses_shared_patched_attestation_policy(pull_tools, tmp_path, mon
 def test_observer_rejects_forged_success(pull_tools, monkeypatch):
     api = API()
     monkeypatch.setenv("PRODUCTION_DEPLOYMENT_APP_ID", "77")
+    monkeypatch.setenv("PRODUCTION_DEPLOYMENT_CREATOR_ID", "777")
     api.responses["deployments/100/statuses?per_page=1"] = [
-        {"state": "success", "performed_via_github_app": {"id": 88}}
+        {"state": "success", "creator": {"id": 888}, "performed_via_github_app": None}
     ]
+    with pytest.raises(ValueError, match="dedicated VM App"):
+        pull_tools.wait(api, 100, seconds=1)
+
+
+def test_observer_accepts_realistic_null_app_metadata_only_for_expected_bot(
+    pull_tools, monkeypatch
+):
+    api = API()
+    monkeypatch.setenv("PRODUCTION_DEPLOYMENT_APP_ID", "77")
+    monkeypatch.setenv("PRODUCTION_DEPLOYMENT_CREATOR_ID", "777")
+    api.responses["deployments/100/statuses?per_page=1"] = [
+        {"state": "success", "creator": {"id": 777}, "performed_via_github_app": None}
+    ]
+    pull_tools.wait(api, 100, seconds=1)
+    api.responses["deployments/100/statuses?per_page=1"][0]["performed_via_github_app"] = {"id": 88}
+    with pytest.raises(ValueError, match="dedicated VM App"):
+        pull_tools.wait(api, 100, seconds=1)
+    api.responses["deployments/100/statuses?per_page=1"][0].update(
+        creator={"id": 888}, performed_via_github_app={"id": 77}
+    )
     with pytest.raises(ValueError, match="dedicated VM App"):
         pull_tools.wait(api, 100, seconds=1)
 
@@ -478,7 +519,13 @@ def test_old_queued_request_never_redeploys_after_newer_request(
             "claimed": True,
             "state": "success",
             "description": "done",
-            "reported": {"state": "success", "description": "done", "app_id": 77, "status_id": 200},
+            "reported": {
+                "state": "success",
+                "description": "done",
+                "app_id": 77,
+                "creator_id": 777,
+                "status_id": 200,
+            },
         },
     )
     api.responses["deployments?task=gh-random%3Adeploy&environment=production&per_page=20"] = [
@@ -494,6 +541,7 @@ def test_old_queued_request_never_redeploys_after_newer_request(
         {
             "repository": api.repository,
             "credential": {"app_id": 77},
+            "creator_id": 777,
             "state_dir": str(tmp_path),
             "url": "https://example.com",
         }
@@ -540,6 +588,7 @@ def test_cancel_rechecked_before_claim_and_terminal_delivery_never_replays(
         "alerts_config": str(tmp_path / "alerts.json"),
         "gh_binary": "gh",
         "credential": {"app_id": 77},
+        "creator_id": 777,
         "project_name": "fixture",
         "url": "https://example.com",
         "allow_initial_bootstrap": True,
@@ -586,6 +635,7 @@ def poll_fixture(tools, api, directory, monkeypatch):
     return {
         "repository": api.repository,
         "credential": {"app_id": 77},
+        "creator_id": 777,
         "state_dir": str(directory),
         "url": "https://example.com",
     }
@@ -604,6 +654,7 @@ def test_pending_local_outbox_drains_beyond_remote_page_without_resending(
                 "state": "success",
                 "description": "done",
                 "app_id": 77,
+                "creator_id": 777,
                 "status_id": identifier,
             }
         pull_tools.atomic_json(tmp_path / f"github-deployment-{identifier}.json", record)
@@ -629,7 +680,12 @@ def test_unrelated_same_state_is_not_a_status_acknowledgment(pull_tools, tmp_pat
     monkeypatch.setattr(
         api,
         "post",
-        lambda *args: {"id": 1, "state": "success", "performed_via_github_app": {"id": 88}},
+        lambda *args: {
+            "id": 1,
+            "state": "success",
+            "creator": {"id": 888},
+            "performed_via_github_app": None,
+        },
     )
     with pytest.raises(ValueError, match="dedicated VM App"):
         pull_tools.report_record(api, config, 1, journal, record)
@@ -661,7 +717,7 @@ def test_status_decode_failure_does_not_clobber_success_journal(
     assert json.loads(journal.read_text())["state"] == "success"
     monkeypatch.setattr(pull_tools, "execute", original)
     api.responses["deployments/100/statuses?per_page=1"] = [
-        {"state": "success", "performed_via_github_app": {"id": 77}}
+        {"state": "success", "creator": {"id": 777}, "performed_via_github_app": None}
     ]
     monkeypatch.setattr(
         pull_tools.subprocess,
@@ -686,6 +742,7 @@ def test_rejected_newer_request_cannot_supersede_approved_request(
                 "state": "error",
                 "description": "unapproved request rejected",
                 "app_id": 77,
+                "creator_id": 777,
                 "status_id": 200,
             },
         },

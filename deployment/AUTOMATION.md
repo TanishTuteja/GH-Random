@@ -74,12 +74,21 @@ repository permissions **Contents: read**, **Actions: read**,
 Do not expand the crawler discovery App's permissions. Put its client ID,
 numeric App ID and installation ID in a root-owned private `pull.json`; store
 its PEM separately at the absolute path in that JSON. The client ID signs JWT
-`iss`; numeric App ID is used to validate status origin. Installation tokens
+`iss`; numeric App ID validates optional App metadata. Installation tokens
 are restricted to this repository/permission set and refreshed before expiry.
 
-Set production environment variable `PRODUCTION_DEPLOYMENT_APP_ID` to that
-numeric App ID. Missing configuration fails before queue creation. Only that
-App's statuses can satisfy the workflow observer; an unrelated user/App's
+Set production environment variables `PRODUCTION_DEPLOYMENT_APP_ID` to the
+numeric App ID and `PRODUCTION_DEPLOYMENT_CREATOR_ID` to its **bot user ID**.
+Put that same bot user ID in `pull.json` as `creator_id` (and reuse it as
+monitoring's `telemetry_creator_id`). It is not the App ID or installation ID.
+You can inspect the App's bot user with
+`gh api 'users/YOUR-APP-SLUG[bot]' --jq '{login,id,type}'`; verify the expected
+bot login/type, then copy its numeric `id`. GitHub returns this unforgeable
+server-controlled `creator.id` on deployment statuses. Real App-authored
+responses can have `performed_via_github_app: null`, so that optional field
+is checked when present but never used as the sole identity proof.
+Missing configuration fails before queue creation. Only the expected bot's
+statuses can satisfy the workflow observer; an unrelated user/App's
 `success` is rejected. These account/configuration steps are intentionally not
 performed by CI and require no credential pasted into chat or committed file.
 

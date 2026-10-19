@@ -105,6 +105,7 @@ def check(
         "url": url,
         "gh_binary": "/not-used-in-fixture",
         "credential": {"app_id": 77},
+        "creator_id": 777,
     }
     source_files = {name: (release / name).read_bytes() for name in original["deployment_files"]}
     metadata = {**original, "tag_object": "b" * 40, "release_id": 8}
@@ -116,7 +117,13 @@ def check(
             member.size = len(data)
             archive.addfile(member, io.BytesIO(data))
     raw = stream.getvalue()
-    payload = {"tag": metadata["tag"], "commit": metadata["commit"], "release_id": 8, "app_id": 77}
+    payload = {
+        "tag": metadata["tag"],
+        "commit": metadata["commit"],
+        "release_id": 8,
+        "app_id": 77,
+        "creator_id": 777,
+    }
     deployment = {"id": 90001, "payload": payload}
 
     class API:
@@ -148,7 +155,12 @@ def check(
         def post(self, path, value):
             assert path.endswith("/deployments/90001/statuses")
             self.posts.append(value)
-            return {"id": 901, "state": value["state"], "performed_via_github_app": {"id": 77}}
+            return {
+                "id": 901,
+                "state": value["state"],
+                "creator": {"id": 777},
+                "performed_via_github_app": None,
+            }
 
     api = API()
     actual_run = subprocess.run
