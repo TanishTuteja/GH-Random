@@ -144,6 +144,11 @@ jobs:
         with:
           subject-path: dist/release/*-deployment.tar.gz
 
+      - name: Verify signed archive and image with the production identity policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python deployment/attestations.py --metadata dist/release/release.json --archive "dist/release/gh-random-$RELEASE_TAG-deployment.tar.gz"
+
       - name: Attach digest, metadata, deployment archive, and checksums
         env:
           GH_TOKEN: ${{ github.token }}

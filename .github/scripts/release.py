@@ -34,6 +34,7 @@ DEPLOYMENT_FILES = (
     "deployment/caddy.env.example",
     "deployment/database_backup.py",
     "deployment/deploy.py",
+    "deployment/attestations.py",
     "deployment/github_api.py",
     "deployment/external_monitor.py",
     "deployment/telemetry.json.example",
