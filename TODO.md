@@ -160,6 +160,8 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   monitoring with protected environment-only SMTP secrets, durable pending email,
   reminders and recovery. Test real TLS loopback delivery and forged/stale data.
   The independent monitoring environment is configured and read back.
+  The permanent issue #26 and its Actions variable are configured; monitoring
+  is explicitly disabled pending live acceptance.
 - [ ] Configure the real hostname, dedicated telemetry App/anchor and SMTP
   environment secrets, enable the external schedule and verify actual outage,
   staleness and recovery emails after the OCI stack exists. GitHub itself is

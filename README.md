@@ -944,6 +944,24 @@ command line, Git, Docker env, unit file or chat. Use a provider-issued SMTP/app
 credential, not a general account password where the provider supports one.
 Confirm the provider's free allowance and permitted sender before enabling it.
 
+Personal Gmail is suitable for the initial low-volume alerts if the account
+supports App Passwords. Enable 2-Step Verification, then create separately named
+App Passwords for the VM and the external GitHub monitor. Use `smtp.gmail.com`,
+port `465`, `smtp_security: "ssl"`, the full Gmail address as `smtp_username`
+and the same address as `from_address`. Store the VM App Password only in the
+private password file and the external monitor's distinct App Password only in
+its `monitoring` environment secret. These are independently revocable credentials,
+not send-only permission scopes; consider a dedicated alerts account to isolate
+your personal mailbox. Never use your normal Google password.
+
+Some account security policies do not offer App Passwords; do not weaken those
+policies to make this work. Google also revokes App Passwords after a Google
+password change. Its personal sending limit is shared with ordinary account use,
+not reserved for alerts. Verify actual failure/recovery inbox delivery from both
+locations before enabling schedules. See Google's [App Password instructions](https://support.google.com/mail/answer/185833),
+[SMTP settings](https://developers.google.com/workspace/gmail/imap/imap-smtp) and
+[sending limits](https://support.google.com/mail/answer/22839).
+
 `smtp_security` accepts only `ssl` (usually port 465) or `starttls` (usually 587).
 Certificate and hostname verification are mandatory; STARTTLS never falls back
 to plaintext. `smtp_ca_file` is an optional absolute private CA file for an

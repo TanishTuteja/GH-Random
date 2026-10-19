@@ -131,6 +131,10 @@ this ledger. The issue is not a private incident channel.
 
 Set these **repository variables** under Settings → Secrets and variables → Actions:
 
+This repository already has the permanent state [issue #26](https://github.com/TanishTuteja/GH-Random/issues/26)
+and `MONITORING_ISSUE_NUMBER=26`. Reuse it rather than creating another ledger.
+`MONITORING_ENABLED=false` is explicit; real monitoring is not yet enabled.
+
 | Variable | Value |
 | --- | --- |
 | `MONITORING_ORIGIN` | `https://your-real-hostname` |

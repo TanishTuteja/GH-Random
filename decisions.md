@@ -749,3 +749,13 @@ operations issue, with reminders and recovery; SMTP acceptance is not inbox
 proof. GitHub scheduling/outages and the SMTP provider remain shared failure
 domains. Real hostname/App/provider setup and outage tests await the live stack.
 
+## 2026-10-20 — Gmail alert setup remains private and unproven
+
+The operator has a personal Gmail account. Document its supported App Password
+SMTP configuration as a free low-volume option, with separate revocable VM and
+external-monitor credentials and an optional dedicated alerts account. Do not
+collect credentials in chat, weaken account security, or equate SMTP acceptance
+with inbox delivery. Provider setup and real delivery tests remain unchecked.
+Create the durable operations ledger once as issue #26, set its repository
+variable, and explicitly keep MONITORING_ENABLED=false until live acceptance.
+
