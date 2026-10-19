@@ -791,3 +791,21 @@ a 35-second deadline, so stalled DNS still permits an email report. Resolve and
 validate public addresses once, pin numeric TCP peers and retain the original
 hostname for Host/SNI/certificate verification; never re-resolve after validation.
 
+## 2026-10-20 — First immutable release verified, production still absent
+
+Publish signed v0.1.0 from green main commit a312576a631ab575894e2a780ada1904844f0569.
+GitHub verified the SSH tag and the real Release workflow passed published-digest
+smoke tests, actual BuildKit/SPDX graph verification, GitHub signing and exact
+signature policy checks before uploading its four assets. Independently verify
+the downloaded checksums, signed-source archive, both signatures, labels and
+anonymous ARM64 pull. The published index is
+sha256:6917abb8e53573cb7b6040060621e6044b4959165403c9402e25ff00bb465959.
+The same published image passed real App token mint/use/revocation and owned
+private-volume cleanup, without database/crawl work.
+
+Enable and read back GitHub's free public-repository secret scanning and push
+protection; no open secret/dependency alerts were reported. These pattern-based
+controls are not proof that every possible secret or vulnerability is detected.
+Keep the OCI/live acceptance items unchecked: no host, site URL, provider inbox
+delivery or production deployment was established by publishing this release.
+
