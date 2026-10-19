@@ -779,3 +779,15 @@ between publication and the VM, with official GitHub CLI >=2.97.0 rather than
 accepting a known-vulnerable signer-workflow verifier. Verify signatures before
 uploading usable assets; BuildKit graph consistency remains a separate check.
 
+Read-only real GitHub responses showed App-authored deployment statuses can have
+null performed_via_github_app metadata. Bind status authority to the configured
+server-controlled numeric bot creator ID; validate optional App metadata when
+present. Bind both identities into the approved receipt and observer. Keep the
+workflow's immutable approval receipt mandatory, rather than relying on an
+optional API field for authorization.
+
+Run the complete external site DNS/TLS/HTTP probe in a credential-free child with
+a 35-second deadline, so stalled DNS still permits an email report. Resolve and
+validate public addresses once, pin numeric TCP peers and retain the original
+hostname for Host/SNI/certificate verification; never re-resolve after validation.
+

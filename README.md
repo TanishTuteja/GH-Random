@@ -664,6 +664,9 @@ signed assets before applying it. Only the VM can report actual deployment
 success. GitHub does not need inbound SSH or a production self-hosted runner.
 Installing the puller, its dedicated App and private configuration remains a
 manual VM setup step; publishing a release does not start a deployment.
+Configure both production environment variables `PRODUCTION_DEPLOYMENT_APP_ID`
+and `PRODUCTION_DEPLOYMENT_CREATOR_ID` as documented: the latter is the App's
+bot user ID, not its App or installation ID. Missing identities fail closed.
 
 The manual path below needs Python 3.12+, Docker Engine, and Docker Compose. No host virtualenv,
 PostgreSQL client, or Docker socket mounted into application containers is needed.
