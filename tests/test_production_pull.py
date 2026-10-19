@@ -44,6 +44,8 @@ class API:
 
     def post(self, path, payload):
         self.posts.append((path, payload))
+        if path.endswith("/statuses"):
+            return {"id": 100, "state": payload["state"], "performed_via_github_app": {"id": 77}}
         return {"id": 100}
 
 
@@ -327,7 +329,11 @@ def test_claimed_interrupted_request_is_not_reexecuted(pull_tools, approved, tmp
     monkeypatch.setattr(
         pull_tools.subprocess, "run", lambda *args, **kwargs: pytest.fail("Migration replayed")
     )
-    pull_tools.execute(api, {"state_dir": str(tmp_path), "url": "https://example.com"}, request)
+    pull_tools.execute(
+        api,
+        {"state_dir": str(tmp_path), "url": "https://example.com", "credential": {"app_id": 77}},
+        request,
+    )
     assert json.loads(journal.read_text())["state"] == "error"
     assert api.posts[-1][1]["state"] == "error"
 
@@ -378,7 +384,13 @@ def test_old_queued_request_never_redeploys_after_newer_request(
     api, request = approved
     tmp_path.chmod(0o700)
     pull_tools.atomic_json(
-        tmp_path / "github-deployment-200.json", {"state": "success", "description": "done"}
+        tmp_path / "github-deployment-200.json",
+        {
+            "claimed": True,
+            "state": "success",
+            "description": "done",
+            "reported": {"state": "success", "description": "done", "app_id": 77, "status_id": 200},
+        },
     )
     api.responses["deployments?task=gh-random%3Adeploy&environment=production&per_page=20"] = [
         request
@@ -390,7 +402,12 @@ def test_old_queued_request_never_redeploys_after_newer_request(
         pull_tools, "execute", lambda *args: pytest.fail("Old queued release executed")
     )
     pull_tools.poll(
-        {"repository": api.repository, "credential": {"app_id": 77}, "state_dir": str(tmp_path)}
+        {
+            "repository": api.repository,
+            "credential": {"app_id": 77},
+            "state_dir": str(tmp_path),
+            "url": "https://example.com",
+        }
     )
     assert api.posts[-1][1]["state"] == "inactive"
 
@@ -461,3 +478,126 @@ def test_cancel_rechecked_before_claim_and_terminal_delivery_never_replays(
         assert "--backup-config" in executed[0] and "--alerts-config" in executed[0]
         pull_tools.execute(api, config, request)
         assert len(executed) == 1
+
+
+def poll_fixture(tools, api, directory, monkeypatch):
+    directory.chmod(0o700)
+    monkeypatch.setattr(tools, "GitHubAPI", lambda *args, **kwargs: api)
+    monkeypatch.setattr(tools, "Credential", lambda *args, **kwargs: None)
+    return {
+        "repository": api.repository,
+        "credential": {"app_id": 77},
+        "state_dir": str(directory),
+        "url": "https://example.com",
+    }
+
+
+def test_pending_local_outbox_drains_beyond_remote_page_without_resending(
+    pull_tools, tmp_path, monkeypatch
+):
+    api = API()
+    config = poll_fixture(pull_tools, api, tmp_path, monkeypatch)
+    api.responses["deployments?task=gh-random%3Adeploy&environment=production&per_page=20"] = []
+    for identifier in range(1, 23):
+        record = {"claimed": True, "state": "success", "description": "done"}
+        if identifier != 1:
+            record["reported"] = {
+                "state": "success",
+                "description": "done",
+                "app_id": 77,
+                "status_id": identifier,
+            }
+        pull_tools.atomic_json(tmp_path / f"github-deployment-{identifier}.json", record)
+    monkeypatch.setattr(
+        pull_tools.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("Root deployment replayed"),
+    )
+    pull_tools.poll(config)
+    assert len(api.posts) == 1 and api.posts[0][0].endswith("/deployments/1/statuses")
+    journal = json.loads((tmp_path / "github-deployment-1.json").read_text())
+    assert journal["reported"]["app_id"] == 77 and journal["reported"]["state"] == "success"
+    pull_tools.poll(config)
+    assert len(api.posts) == 1
+
+
+def test_unrelated_same_state_is_not_a_status_acknowledgment(pull_tools, tmp_path, monkeypatch):
+    api = API()
+    config = poll_fixture(pull_tools, api, tmp_path, monkeypatch)
+    journal = tmp_path / "github-deployment-1.json"
+    record = {"claimed": True, "state": "success", "description": "done"}
+    pull_tools.atomic_json(journal, record)
+    monkeypatch.setattr(
+        api,
+        "post",
+        lambda *args: {"id": 1, "state": "success", "performed_via_github_app": {"id": 88}},
+    )
+    with pytest.raises(ValueError, match="dedicated VM App"):
+        pull_tools.report_record(api, config, 1, journal, record)
+    assert "reported" not in json.loads(journal.read_text())
+
+
+def test_status_decode_failure_does_not_clobber_success_journal(
+    pull_tools, approved, tmp_path, monkeypatch
+):
+    api, request = approved
+    config = poll_fixture(pull_tools, api, tmp_path, monkeypatch)
+    api.responses["deployments?task=gh-random%3Adeploy&environment=production&per_page=20"] = [
+        request
+    ]
+    api.responses["deployments/100/statuses?per_page=1"] = [{"state": "queued"}]
+    original = pull_tools.execute
+    journal = tmp_path / "github-deployment-100.json"
+
+    def completed_then_bad_response(*args, **kwargs):
+        pull_tools.atomic_json(
+            journal,
+            {"claimed": True, "state": "success", "description": "real execution succeeded"},
+        )
+        raise json.JSONDecodeError("bad status response", "", 0)
+
+    monkeypatch.setattr(pull_tools, "execute", completed_then_bad_response)
+    with pytest.raises(json.JSONDecodeError):
+        pull_tools.poll(config)
+    assert json.loads(journal.read_text())["state"] == "success"
+    monkeypatch.setattr(pull_tools, "execute", original)
+    api.responses["deployments/100/statuses?per_page=1"] = [
+        {"state": "success", "performed_via_github_app": {"id": 77}}
+    ]
+    monkeypatch.setattr(
+        pull_tools.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("Root deployment replayed"),
+    )
+    pull_tools.poll(config)
+    assert json.loads(journal.read_text())["reported"]["state"] == "success"
+
+
+def test_rejected_newer_request_cannot_supersede_approved_request(
+    pull_tools, approved, tmp_path, monkeypatch
+):
+    api, request = approved
+    config = poll_fixture(pull_tools, api, tmp_path, monkeypatch)
+    pull_tools.atomic_json(
+        tmp_path / "github-deployment-200.json",
+        {
+            "state": "error",
+            "description": "unapproved request rejected",
+            "reported": {
+                "state": "error",
+                "description": "unapproved request rejected",
+                "app_id": 77,
+                "status_id": 200,
+            },
+        },
+    )
+    api.responses["deployments?task=gh-random%3Adeploy&environment=production&per_page=20"] = [
+        request
+    ]
+    api.responses["deployments/100/statuses?per_page=1"] = [{"state": "queued"}]
+    executed = []
+    monkeypatch.setattr(
+        pull_tools, "execute", lambda api, cfg, value, **kwargs: executed.append(value["id"])
+    )
+    pull_tools.poll(config)
+    assert executed == [100] and not api.posts

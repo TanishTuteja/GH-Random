@@ -313,11 +313,55 @@ def attest(api: GitHubAPI, metadata: dict[str, Any], archive: Path, gh: Path) ->
         require(result.returncode == 0, "Signed release attestation verification failed")
 
 
-def status(api: GitHubAPI, identifier: int, state: str, description: str, *, url: str = "") -> None:
+def status(api: GitHubAPI, identifier: int, state: str, description: str, *, url: str = "") -> Any:
     value: dict[str, Any] = {"state": state, "description": description, "auto_inactive": False}
     if url:
         value["environment_url"] = url
-    api.post(api.base + f"/deployments/{identifier}/statuses", value)
+    return api.post(api.base + f"/deployments/{identifier}/statuses", value)
+
+
+def acknowledged(record: dict[str, Any], app_id: int) -> bool:
+    value = record.get("reported")
+    return (
+        isinstance(value, dict)
+        and value.get("state") == record["state"]
+        and value.get("description") == record["description"]
+        and value.get("app_id") == app_id
+        and type(value.get("status_id")) is int
+        and value["status_id"] > 0
+    )
+
+
+def report_record(
+    api: GitHubAPI,
+    config: dict[str, Any],
+    identifier: int,
+    journal: Path,
+    record: dict[str, Any],
+    *,
+    force: bool = False,
+) -> None:
+    app_id = config["credential"]["app_id"]
+    if not force and acknowledged(record, app_id):
+        return
+    response = status(api, identifier, record["state"], record["description"], url=config["url"])
+    require(
+        isinstance(response, dict)
+        and type(response.get("id")) is int
+        and response["id"] > 0
+        and response.get("state") == record["state"]
+        and response.get("performed_via_github_app", {}).get("id") == app_id,
+        "Deployment status was not acknowledged by the dedicated VM App",
+    )
+    # A crash after GitHub acceptance but before this atomic save may duplicate
+    # a status, never a migration. Unrelated matching statuses are not receipts.
+    record["reported"] = {
+        "state": record["state"],
+        "description": record["description"],
+        "app_id": app_id,
+        "status_id": response["id"],
+    }
+    atomic_json(journal, record)
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -358,7 +402,13 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
-def execute(api: GitHubAPI, config: dict[str, Any], deployment: dict[str, Any]) -> None:
+def execute(
+    api: GitHubAPI,
+    config: dict[str, Any],
+    deployment: dict[str, Any],
+    *,
+    force_report: bool = False,
+) -> None:
     state = Path(config["state_dir"])
     journal = state / f"github-deployment-{deployment['id']}.json"
     # Durable outbox + at-most-once execution. Never retry a migration after a crash.
@@ -371,7 +421,7 @@ def execute(api: GitHubAPI, config: dict[str, Any], deployment: dict[str, Any]) 
                 description="Puller interrupted; inspect VM journal before a new request",
             )
             atomic_json(journal, record)
-        status(api, deployment["id"], record["state"], record["description"], url=config["url"])
+        report_record(api, config, deployment["id"], journal, record, force=force_report)
         return
     payload = verify_request(api, deployment)
     require(
@@ -446,12 +496,13 @@ def execute(api: GitHubAPI, config: dict[str, Any], deployment: dict[str, Any]) 
         )
         command.append("--bootstrap")
     record = {
+        "claimed": True,
         "state": "in_progress",
         "description": "VM applying verified release; cancellation will not interrupt migrations",
         "tag": payload["tag"],
     }
     atomic_json(journal, record)
-    status(api, deployment["id"], record["state"], record["description"], url=config["url"])
+    report_record(api, config, deployment["id"], journal, record)
     # No subprocess timeout and no remote cancellation: deploy.py owns bounded
     # database/session lifecycle. systemd stop is an explicit host operation.
     result = subprocess.run(command, check=False)
@@ -462,7 +513,7 @@ def execute(api: GitHubAPI, config: dict[str, Any], deployment: dict[str, Any]) 
         else "VM deployment failed; inspect journal; no automatic rollback",
     )
     atomic_json(journal, record)
-    status(api, deployment["id"], record["state"], record["description"], url=config["url"])
+    report_record(api, config, deployment["id"], journal, record)
 
 
 def poll(config: dict[str, Any]) -> None:
@@ -477,7 +528,22 @@ def poll(config: dict[str, Any]) -> None:
             for path in state.glob("github-deployment-*.json")
             if re.fullmatch(r"github-deployment-[0-9]+", path.stem)
         ]
-        latest = max(processed, default=0)
+        latest = 0
+        drained = 0
+        # The durable outbox is local, independent of GitHub list pagination.
+        # Bound each poll's backlog work; acknowledged records are not resent.
+        for identifier in sorted(processed):
+            path = state / f"github-deployment-{identifier}.json"
+            check_private(path)
+            record = json.loads(path.read_text())
+            if record.get("claimed") is True:
+                latest = max(latest, identifier)
+            if drained < 20 and (
+                record["state"] == "in_progress"
+                or not acknowledged(record, config["credential"]["app_id"])
+            ):
+                execute(api, config, {"id": identifier})
+                drained += 1
         requests = get(
             api, "deployments?task=gh-random%3Adeploy&environment=production&per_page=20"
         )
@@ -493,7 +559,7 @@ def poll(config: dict[str, Any]) -> None:
                     != config["credential"]["app_id"]
                     or record["state"] == "in_progress"
                 ):
-                    execute(api, config, deployment)
+                    execute(api, config, deployment, force_report=True)
                 continue
             if deployment["id"] < latest:
                 record = {
@@ -501,7 +567,7 @@ def poll(config: dict[str, Any]) -> None:
                     "description": "Superseded; dispatch again explicitly if needed",
                 }
                 atomic_json(journal, record)
-                status(api, deployment["id"], record["state"], record["description"])
+                report_record(api, config, deployment["id"], journal, record)
                 continue
             if statuses and statuses[0]["state"] not in ("queued", "pending"):
                 continue
@@ -510,12 +576,16 @@ def poll(config: dict[str, Any]) -> None:
             except RequestNotReady:
                 pass
             except ValueError:
+                # JSONDecodeError/status response validation may occur AFTER
+                # real deployment. Its durable execution truth must survive.
+                if journal.exists():
+                    raise
                 record = {
                     "state": "error",
                     "description": "Request rejected by VM verification; no deployment started",
                 }
                 atomic_json(journal, record)
-                status(api, deployment["id"], record["state"], record["description"])
+                report_record(api, config, deployment["id"], journal, record)
                 raise RuntimeError("Deployment request rejected; inspect GitHub status") from None
             except Exception as error:
                 # Not-ready requests may become verifiable next tick. No root

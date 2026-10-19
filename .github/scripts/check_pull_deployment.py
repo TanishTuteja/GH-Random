@@ -148,6 +148,7 @@ def check(
         def post(self, path, value):
             assert path.endswith("/deployments/90001/statuses")
             self.posts.append(value)
+            return {"id": 901, "state": value["state"], "performed_via_github_app": {"id": 77}}
 
     api = API()
     actual_run = subprocess.run
