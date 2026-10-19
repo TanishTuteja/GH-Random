@@ -30,7 +30,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version-file: pyproject.toml
           enable-cache: true
@@ -82,7 +82,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version-file: pyproject.toml
           enable-cache: true
@@ -125,7 +125,7 @@ jobs:
         run: sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /opt/gh-random-ci-docker
 
       - name: Enable local digest-addressable images for deployment rehearsals
-        uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
         with:
           runtime-basedir: /opt/gh-random-ci-docker
           daemon-config: |
