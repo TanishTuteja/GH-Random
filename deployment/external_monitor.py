@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import ipaddress
 import json
 import os
 import re
 import socket
 import ssl
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 try:
     from . import notifications
@@ -26,6 +27,7 @@ ENVIRONMENT = "gh-random-monitoring"
 TITLE = "[Operations] External monitor state"
 MARKER = "<!-- gh-random-monitor:v1 -->\n"
 CODES = {"site", "telemetry", "host", "crawl", "backup"}
+SITE_TIMEOUT = 35
 
 
 def require(condition: bool, message: str) -> None:
@@ -144,13 +146,6 @@ def publish(api: Any, config: dict[str, Any], now: int) -> dict[str, int]:
     return current
 
 
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(
-        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
-    ) -> None:
-        return None
-
-
 def public_origin(value: str) -> str:
     parsed = urlsplit(value)
     require(
@@ -168,39 +163,94 @@ def public_origin(value: str) -> str:
     return f"https://{parsed.hostname}"
 
 
-def public_addresses(host: str) -> None:
+def public_addresses(host: str) -> list[str]:
     addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     require(bool(addresses), "No public site addresses")
     require(
         all(ipaddress.ip_address(value[4][0]).is_global for value in addresses),
         "The monitored origin must not resolve to a private/local address",
     )
+    result = list(dict.fromkeys(str(ipaddress.ip_address(value[4][0])) for value in addresses))
+    require(len(result) <= 16, "Too many public site addresses")
+    return result
 
 
-def read_https(url: str, *, ca_file: str | None = None) -> tuple[str, bytes]:
-    """TLS verified, redirects refused, no auth/cookies, bounded response/request."""
-    opener = build_opener(
-        NoRedirect(), HTTPSHandler(context=ssl.create_default_context(cafile=ca_file))
-    )
-    request = Request(
-        url, headers={"User-Agent": "GH-Random-external-monitor/1", "Cache-Control": "no-cache"}
-    )
-    with opener.open(request, timeout=10) as response:
-        require(response.status == 200, "Unexpected site response")
-        data = response.read(1024 * 1024 + 1)
-        require(len(data) <= 1024 * 1024, "Site response exceeds limit")
-        return response.headers.get_content_type(), data
+def connect_address(address: str, port: int, timeout: float) -> socket.socket:
+    """Numeric socket.connect does not perform a second hostname resolution."""
+    parsed = ipaddress.ip_address(address)
+    require(parsed.is_global, "The pinned address must be public")
+    connection = socket.socket(socket.AF_INET if parsed.version == 4 else socket.AF_INET6)
+    connection.settimeout(timeout)
+    try:
+        connection.connect((str(parsed), port))
+        return connection
+    except BaseException:
+        connection.close()
+        raise
+
+
+class PinnedHTTPS(http.client.HTTPSConnection):
+    def __init__(self, host: str, port: int, address: str, context: ssl.SSLContext):
+        super().__init__(host, port, timeout=10, context=context)
+        self.address = address
+        self.tls_context = context
+
+    def connect(self) -> None:
+        connection = connect_address(self.address, self.port, 10)
+        try:
+            # Keep the original DNS name for SNI, certificate checks and Host;
+            # only the TCP destination is pinned to the validated public IP.
+            self.sock = self.tls_context.wrap_socket(connection, server_hostname=self.host)
+        except BaseException:
+            connection.close()
+            raise
+
+
+def read_https(
+    url: str, *, ca_file: str | None = None, addresses: list[str] | None = None
+) -> tuple[str, bytes]:
+    """No redirects/proxies/auth/cookies; pinned TCP peer and normal verified TLS."""
+    parsed = urlsplit(url)
+    require(parsed.scheme == "https" and parsed.hostname is not None, "HTTPS hostname required")
+    assert parsed.hostname is not None
+    addresses = public_addresses(parsed.hostname) if addresses is None else addresses
+    require(bool(addresses), "Missing pinned site addresses")
+    context = ssl.create_default_context(cafile=ca_file)
+    path = (parsed.path or "/") + ("?" + parsed.query if parsed.query else "")
+    last: Exception | None = None
+    for address in addresses:
+        connection = PinnedHTTPS(parsed.hostname, parsed.port or 443, address, context)
+        try:
+            connection.request(
+                "GET",
+                path,
+                headers={"User-Agent": "GH-Random-external-monitor/1", "Cache-Control": "no-cache"},
+            )
+            with connection.getresponse() as response:
+                require(response.status == 200, "Unexpected site response; redirects are refused")
+                data = response.read(1024 * 1024 + 1)
+                require(len(data) <= 1024 * 1024, "Site response exceeds limit")
+                return response.headers.get_content_type(), data
+        except ssl.SSLCertVerificationError:
+            raise
+        except (OSError, http.client.HTTPException) as error:
+            last = error
+        finally:
+            connection.close()
+    assert last is not None
+    raise last
 
 
 def probe_site(origin: str) -> None:
     origin = public_origin(origin)
     host = urlsplit(origin).hostname
     assert host is not None
-    public_addresses(host)
-    content_type, page = read_https(origin + "/")
+    addresses = public_addresses(host)
+    content_type, page = read_https(origin + "/", addresses=addresses)
     require(content_type == "text/html" and b"GH Random" in page, "Unexpected homepage")
     content_type, data = read_https(
-        origin + "/api/random-repository?language=any&star_bucket=any&pushed_bucket=any"
+        origin + "/api/random-repository?language=any&star_bucket=any&pushed_bucket=any",
+        addresses=addresses,
     )
     require(content_type == "application/json", "Discovery did not return JSON")
     value = json.loads(data)
@@ -214,10 +264,29 @@ def probe_site(origin: str) -> None:
     )
 
 
+def probe_site_bounded(origin: str) -> None:
+    """A DNS/TLS/slow-body stall must leave time for the parent to report email."""
+    origin = public_origin(origin)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}
+    }
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "probe-site", "--origin", origin],
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=SITE_TIMEOUT,
+        check=False,
+    )
+    require(result.returncode == 0, "Public site probe failed")
+
+
 def checks(api: Any, config: dict[str, Any], now: int) -> list[str]:
     failures: list[str] = []
     try:
-        probe_site(config["origin"])
+        probe_site_bounded(config["origin"])
     except Exception:
         failures.append("site")
     try:
@@ -371,10 +440,18 @@ def smtp_from_environment(directory: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("publish", "check", "create-anchor", "create-issue"))
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "command", choices=("publish", "check", "create-anchor", "create-issue", "probe-site")
+    )
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--origin")
     args = parser.parse_args()
     try:
+        if args.command == "probe-site":
+            require(isinstance(args.origin, str), "A public HTTPS origin is required")
+            probe_site(args.origin)
+            return 0
+        require(args.config is not None, "Private monitoring configuration is required")
         from github_api import Credential, GitHubAPI  # type: ignore[import-not-found]
 
         config = notifications.read_json(args.config)

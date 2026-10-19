@@ -20,8 +20,15 @@ repository. A functioning homepage with an unavailable database or empty active
 catalog is not considered healthy. The public origin cannot contain credentials,
 an explicit port, path or query, or resolve to local/private addresses. TLS peer
 and hostname verification remain enabled. No cookies, GitHub token, or SMTP
-credentials are sent to the site. Requests have ten-second socket timeouts and
-one-MiB response limits; the complete job is limited to five minutes.
+credentials are sent to the site. Public DNS addresses are resolved once, checked
+and pinned as numeric TCP destinations for both requests; the original hostname
+remains the TLS SNI/certificate name and HTTP Host. No second hostname lookup or
+proxy is used to bypass the public-address check. Requests have ten-second socket
+timeouts and one-MiB response limits. The complete DNS/TLS/two-request probe runs
+in an HTTP-only child with a **35-second total deadline**, without GitHub/SMTP
+credentials. A stalled lookup or slow body is killed/reaped and recorded as a site
+failure, leaving the parent able to send email. The complete job is limited to
+five minutes.
 
 A separate, non-production GitHub deployment (`gh-random-monitoring`) is a stable
 telemetry anchor. It is **not** a record that an application release was deployed.

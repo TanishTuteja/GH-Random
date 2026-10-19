@@ -7,12 +7,12 @@ import json
 import ssl
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from urllib.error import HTTPError, URLError
 
 import pytest
 import yaml
@@ -173,13 +173,15 @@ def test_bad_epoch(module, bad):
 
 
 def test_external_checks_site_and_each_success_independently(module, api, config, monkeypatch):
-    monkeypatch.setattr(module, "probe_site", lambda origin: None)
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
     api.heartbeat()
     assert module.checks(api, config, NOW) == []
     api.heartbeat(h=NOW - 10801, c=NOW - 43201, b=NOW - 129601)
     assert module.checks(api, config, NOW) == ["backup", "crawl", "host"]
     monkeypatch.setattr(
-        module, "probe_site", lambda origin: (_ for _ in ()).throw(OSError("private DNS info"))
+        module,
+        "probe_site_bounded",
+        lambda origin: (_ for _ in ()).throw(OSError("private DNS info")),
     )
     api.statuses = []
     assert module.checks(api, config, NOW) == ["site", "telemetry"]
@@ -246,7 +248,7 @@ def test_probe_requires_real_catalog_result_and_never_follows_page_redirects(mod
     monkeypatch.setattr(module, "public_addresses", lambda host: None)
     calls = []
 
-    def read(url):
+    def read(url, **kwargs):
         calls.append(url)
         return (
             ("text/html", b"GH Random")
@@ -260,7 +262,7 @@ def test_probe_requires_real_catalog_result_and_never_follows_page_redirects(mod
     monkeypatch.setattr(module, "read_https", read)
     module.probe_site("https://example.com")
     assert len(calls) == 2 and "language=any" in calls[-1]
-    monkeypatch.setattr(module, "read_https", lambda url: ("text/html", b"fake"))
+    monkeypatch.setattr(module, "read_https", lambda url, **kwargs: ("text/html", b"fake"))
     with pytest.raises(ValueError):
         module.probe_site("https://example.com")
 
@@ -347,7 +349,7 @@ def test_private_address_and_missing_catalog_are_failures(module, monkeypatch):
         module.public_addresses("example.com")
     monkeypatch.setattr(module, "public_addresses", lambda host: None)
 
-    def read(url):
+    def read(url, **kwargs):
         return (
             ("text/html", b"GH Random")
             if url.endswith("/")
@@ -362,7 +364,9 @@ def test_private_address_and_missing_catalog_are_failures(module, monkeypatch):
         module.probe_site("https://example.com")
 
 
-def test_https_probe_real_tls_bounded_response_and_redirect_rejection(module, tmp_path):
+def test_https_probe_real_tls_bounded_response_and_redirect_rejection(
+    module, tmp_path, monkeypatch
+):
     # Reuse the actual loopback TLS certificate fixture builder, not a fake SSL context.
     spec = importlib.util.spec_from_file_location(
         "notification_tests", ROOT / "tests/test_notifications.py"
@@ -371,9 +375,11 @@ def test_https_probe_real_tls_bounded_response_and_redirect_rejection(module, tm
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     cert, key = fixtures.certificate.__wrapped__(tmp_path)
+    hosts, sni = [], []
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            hosts.append(self.headers["Host"])
             self.send_response(302 if self.path == "/redirect" else 200)
             self.send_header("Content-Type", "text/html")
             self.send_header("Location", "https://example.com/private")
@@ -386,20 +392,28 @@ def test_https_probe_real_tls_bounded_response_and_redirect_rejection(module, tm
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert, key)
+    context.set_servername_callback(lambda connection, name, context: sni.append(name))
     server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    monkeypatch.setattr(module, "public_addresses", lambda host: ["93.184.216.34"])
+
+    def connect(address, port, timeout):
+        assert address == "93.184.216.34"
+        return module.socket.create_connection(("127.0.0.1", server.server_port), timeout)
+
+    monkeypatch.setattr(module, "connect_address", connect)
     try:
         origin = f"https://localhost:{server.server_port}"
         assert module.read_https(origin, ca_file=str(cert)) == ("text/html", b"GH Random")
-        with pytest.raises(HTTPError) as error:
+        with pytest.raises(ValueError, match="redirects are refused"):
             module.read_https(origin + "/redirect", ca_file=str(cert))
-        assert error.value.code == 302
-        with pytest.raises(URLError) as untrusted:
+        with pytest.raises(ssl.SSLCertVerificationError):
             module.read_https(origin)  # Untrusted certificate remains rejected.
-        assert isinstance(untrusted.value.reason, ssl.SSLCertVerificationError)
         with pytest.raises(ValueError, match="response exceeds limit"):
             module.read_https(origin + "/big", ca_file=str(cert))
+        assert hosts and all(host == f"localhost:{server.server_port}" for host in hosts)
+        assert sni and all(name == "localhost" for name in sni)
     finally:
         server.shutdown()
         server.server_close()
@@ -434,3 +448,94 @@ def test_telemetry_unit_has_no_docker_or_write_access_and_runs_after_local_monit
     assert "TimeoutStartSec=120s" in unit
     assert "/usr/local/lib/gh-random/external_monitor.py publish" in unit
     assert "OnCalendar=*-*-* *:20:00 UTC" in timer and "Persistent=true" in timer
+
+
+def test_whole_http_probe_deadline_still_allows_failure_email(
+    module, api, config, tmp_path, monkeypatch
+):
+    # Real subprocess stalls in DNS; the parent must kill/reap it and still report.
+    worker = tmp_path / "stalled-probe.py"
+    worker.write_text(
+        "import socket,time\n"
+        "socket.getaddrinfo=lambda *args,**kwargs:time.sleep(30)\n"
+        "socket.getaddrinfo('fixture.invalid',443)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "__file__", str(worker))
+    monkeypatch.setattr(module, "SITE_TIMEOUT", 1)
+    api.heartbeat()
+    start = time.monotonic()
+    failures = module.checks(api, config, NOW)
+    assert failures == ["site"]
+    sent = []
+    assert module.report(api, config, failures, NOW, lambda *args: sent.append(args))
+    assert len(sent) == 1 and sent[0][2] == "failure"
+    assert time.monotonic() - start < 5
+
+
+def test_probe_child_has_no_github_or_smtp_credentials(module, monkeypatch):
+    calls = []
+    monkeypatch.setenv("GH_TOKEN", "private-token")
+    monkeypatch.setenv("GH_MONITOR_SMTP_CONFIG", "private-mailer")
+    monkeypatch.setenv("UNRELATED_PRIVATE_SECRET", "private-secret")
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or SimpleNamespace(returncode=0),
+    )
+    module.probe_site_bounded("https://example.com")
+    args, options = calls[0]
+    assert args[0][-3:] == ["probe-site", "--origin", "https://example.com"]
+    assert options["timeout"] == 35
+    assert options["stdout"] == options["stderr"] == module.subprocess.DEVNULL
+    assert not any("private-" in value for value in options["env"].values())
+
+
+def test_validated_public_addresses_are_pinned_without_dns_rebinding(module, monkeypatch):
+    resolutions, connections = [], []
+
+    def lookup(*args, **kwargs):
+        resolutions.append(args)
+        value = "93.184.216.34" if len(resolutions) == 1 else "127.0.0.1"
+        return [(2, 1, 6, "", (value, 443))]
+
+    class Socket:
+        def settimeout(self, timeout):
+            assert timeout == 10
+
+        def connect(self, address):
+            connections.append(address)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module.socket, "getaddrinfo", lookup)
+    monkeypatch.setattr(module.socket, "socket", lambda family: Socket())
+    addresses = module.public_addresses("example.com")
+    module.connect_address(addresses[0], 443, 10)
+    assert len(resolutions) == 1  # The dangerous second hostname lookup never occurs.
+    assert connections == [("93.184.216.34", 443)]
+    with pytest.raises(ValueError, match="must be public"):
+        module.connect_address("127.0.0.1", 443, 10)
+
+
+def test_pinned_connection_keeps_original_sni_hostname(module, monkeypatch):
+    values = []
+
+    class Socket:
+        def close(self):
+            pass
+
+    raw = Socket()
+    monkeypatch.setattr(module, "connect_address", lambda *args: values.append(args) or raw)
+
+    class Context:
+        def wrap_socket(self, connection, *, server_hostname):
+            assert connection is raw
+            values.append(server_hostname)
+            return raw
+
+    connection = module.PinnedHTTPS("example.com", 443, "93.184.216.34", Context())
+    connection.connect()
+    assert values == [("93.184.216.34", 443, 10), "example.com"]
+    connection.close()
