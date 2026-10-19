@@ -91,7 +91,9 @@ def test_real_encryption_and_offline_recovery(archives, age, keys, sealed, tmp_p
 
 def test_ciphertext_tampering_and_wrong_key_are_rejected(archives, age, keys, sealed, tmp_path):
     archive, _ = archives.verify(sealed)
-    archive.write_bytes(archive.read_bytes()[:-1] + b"!")
+    original = archive.read_bytes()
+    # Ciphertext is random: replacing with a fixed byte can leave it unchanged.
+    archive.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
     with pytest.raises(ValueError, match="checksum"):
         archives.verify(sealed)
     with pytest.raises(ValueError, match="decryption"):

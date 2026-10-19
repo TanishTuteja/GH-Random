@@ -51,6 +51,8 @@ jobs:
       contents: write # Attach assets to the existing release; do not create tags.
       actions: read
       packages: write
+      id-token: write # GitHub-signed release provenance, not unsigned BuildKit claims.
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.verify.outputs.tag }}
       IMAGE: ${{ needs.verify.outputs.image }}
@@ -95,7 +97,7 @@ jobs:
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ needs.verify.outputs.commit }}
           platforms: linux/arm64
           push: true
           tags: ${{ env.IMAGE }}:${{ env.RELEASE_TAG }}
@@ -114,6 +116,21 @@ jobs:
           docker pull "$IMAGE@$DIGEST"
           python .github/scripts/check_containers.py --image "$IMAGE@$DIGEST"
 
+      - name: Sign the published image provenance with GitHub's OIDC identity
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify attached ARM64 source provenance and SBOM by digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_COMMIT: ${{ needs.verify.outputs.commit }}
+        run: |
+          python .github/scripts/install_oras.py --destination "$RUNNER_TEMP/oras-tools"
+          python .github/scripts/verify_image_supply_chain.py --oras "$RUNNER_TEMP/oras-tools/oras" --image "$IMAGE@$DIGEST" --repository "$GITHUB_REPOSITORY" --commit "$SOURCE_COMMIT" --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/image-supply-chain.json"
+
       - name: Check tag again and package matching deployment files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -121,6 +138,16 @@ jobs:
         run: |
           python .github/scripts/release.py verify --metadata "$RUNNER_TEMP/release.json"
           python .github/scripts/release.py bundle --metadata "$RUNNER_TEMP/release.json" --digest "$DIGEST" --output dist/release
+
+      - name: Sign the exact deployment archive provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: dist/release/*-deployment.tar.gz
+
+      - name: Verify signed archive and image with the production identity policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python deployment/attestations.py --metadata dist/release/release.json --archive "dist/release/gh-random-$RELEASE_TAG-deployment.tar.gz"
 
       - name: Attach digest, metadata, deployment archive, and checksums
         env:

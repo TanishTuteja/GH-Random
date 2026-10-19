@@ -716,3 +716,78 @@ uv to its project pin, and production defaults to env/CI/development image pins.
 Negative fixtures prove inconsistent single-file updates fail. Green bot checks
 do not authorize automatic adoption of a different runtime or database major.
 
+## 2026-10-18 — Outbound deployment authorization and publisher identity
+
+Use a protected, manually approved main-branch Actions job to queue a deployment,
+then a VM-side puller over outbound HTTPS. Do not expose SSH/webhooks or install
+a privileged self-hosted Actions runner. A GitHub Deployment payload alone is not
+approval: bind it to the successful queue job's immutable run/attempt artifact
+and the installed reviewed workflow. Report success only after the VM's existing
+backup/migrate/restart/smoke path succeeds; preserve prior files/images and never
+replay a claimed migration after a crash. Cancellation cannot abort active DDL.
+
+Use a separate repository-scoped operations App; do not expand the crawler App.
+Verify downloaded root scripts against signed source Git blobs and GitHub-signed
+archive/image attestations with exact repository, workflow, source and tag policy.
+Build releases from an immutable remote Git context. Independently inspect the
+actual content-addressed ARM64 OCI graph, BuildKit provenance and SPDX inventory;
+matching labels and unsigned metadata do not authenticate a publisher. These
+checks do not claim hermetic builds, vulnerability freedom or a SLSA level.
+
+## 2026-10-18 — Independent email monitoring without another paid service
+
+Use GitHub-hosted scheduled checks, disabled until live acceptance, for public
+HTTPS/API availability and compact success-only telemetry posted by the VM's
+operations App. Publish only timestamps, not data, identifiers, paths or logs.
+Preserve prior proven successes when a later operation fails. The external
+checker validates author, anchor, newest status, schema and timestamp freshness.
+
+Keep external SMTP secrets in a separate protected-branches-only monitoring
+environment with no reviewer delay, not repository-wide secrets or production's
+approval gate. Store durable safe incident codes/pending delivery in a dedicated
+operations issue, with reminders and recovery; SMTP acceptance is not inbox
+proof. GitHub scheduling/outages and the SMTP provider remain shared failure
+domains. Real hostname/App/provider setup and outage tests await the live stack.
+
+## 2026-10-20 — Gmail alert setup remains private and unproven
+
+The operator has a personal Gmail account. Document its supported App Password
+SMTP configuration as a free low-volume option, with separate revocable VM and
+external-monitor credentials and an optional dedicated alerts account. Do not
+collect credentials in chat, weaken account security, or equate SMTP acceptance
+with inbox delivery. Provider setup and real delivery tests remain unchecked.
+Create the durable operations ledger once as issue #26, set its repository
+variable, and explicitly keep MONITORING_ENABLED=false until live acceptance.
+
+## 2026-10-20 — Rehearsal and cross-review close release boundary gaps
+
+The actual ARM64 approved-pull rehearsal exposed a real non-root Caddy bind-file
+permission failure. Give only its public Caddyfile mode 0644; keep the private
+release parent directory and root scripts private. Rehearsal then passed real
+encrypted pre-DDL backup, migration, web/proxy smoke, previous-release preservation
+and no-replay checks. This is disposable CI evidence, not OCI acceptance.
+
+Bound the complete expanded gzip stream before tarfile can consume PAX/GNU
+metadata. Separate truthful execution state from a durable status outbox, retry
+outside the remote queue page, and let only authenticated claims supersede older
+requests. A malformed status response after deployment cannot replace recorded
+success with a false claim that no deployment started.
+
+Require completed exact-tag release publication and all four uploaded assets
+before queueing or applying. Share the same signed archive/image identity policy
+between publication and the VM, with official GitHub CLI >=2.97.0 rather than
+accepting a known-vulnerable signer-workflow verifier. Verify signatures before
+uploading usable assets; BuildKit graph consistency remains a separate check.
+
+Read-only real GitHub responses showed App-authored deployment statuses can have
+null performed_via_github_app metadata. Bind status authority to the configured
+server-controlled numeric bot creator ID; validate optional App metadata when
+present. Bind both identities into the approved receipt and observer. Keep the
+workflow's immutable approval receipt mandatory, rather than relying on an
+optional API field for authorization.
+
+Run the complete external site DNS/TLS/HTTP probe in a credential-free child with
+a 35-second deadline, so stalled DNS still permits an email report. Resolve and
+validate public addresses once, pin numeric TCP peers and retain the original
+hostname for Host/SNI/certificate verification; never re-resolve after validation.
+

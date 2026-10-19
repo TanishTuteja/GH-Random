@@ -1,6 +1,6 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-18. `[x]` means implemented and
+Reviewed against the repository on 2026-10-20. `[x]` means implemented and
 locally verified; `[ ]` means work remains. Local checks do not establish that
 something works in production. OCI resources have not been verified. The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
@@ -156,8 +156,16 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   erase the last verified success. Explicit local-only rehearsals never count.
 - [ ] Configure the real SMTP provider/sender/recipients, confirm its free quota,
   and test inbox delivery and failure/recovery without relying solely on SMTP acceptance.
-- [ ] Add monitoring outside the VM for site downtime and missing successful
-  crawls/backups. An on-host failure handler cannot alert while its VM is down.
+- [x] Implement GitHub-hosted external HTTPS/API and host/crawl/backup telemetry
+  monitoring with protected environment-only SMTP secrets, durable pending email,
+  reminders and recovery. Test real TLS loopback delivery and forged/stale data.
+  The independent monitoring environment is configured and read back.
+  The permanent issue #26 and its Actions variable are configured; monitoring
+  is explicitly disabled pending live acceptance.
+- [ ] Configure the real hostname, dedicated telemetry App/anchor and SMTP
+  environment secrets, enable the external schedule and verify actual outage,
+  staleness and recovery emails after the OCI stack exists. GitHub itself is
+  still a shared monitoring failure domain; see deployment/MONITORING.md.
 - [x] Bound all production Docker logs and container resources; add a reviewed,
   optional host-wide journald limits example and operator commands.
 - [x] Add bounded host-local free-space/inode and verified TLS-expiry probes to
@@ -195,15 +203,19 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
 - [ ] After first publication, change the initially private GHCR package to public
   and verify anonymous digest pulls. Never copy the temporary Actions token to
   the VM. Do not announce/deploy a release until its workflow and assets are ready.
-- [ ] Add a production deployment workflow and GitHub `production` environment.
-  Record version/digest, status, and URL; set intended branch/approval controls
-  after confirming availability for the repository/account plan.
-- [ ] Implement automation access through short-lived OCI Bastion sessions or a
-  VM-side pull mechanism, with scoped, rotatable credentials and no public SSH.
-- [ ] Serialize deployments and avoid cancellation during migrations; report
-  failures accurately and retain the previous release.
-- [ ] Use least-privilege workflow permissions and pinned third-party action
+- [x] Implement the production workflow, protected production approval and
+  outbound-only VM pull mechanism with a separate repository-scoped App. Bind
+  approval to immutable run/attempt receipts, verify signed source and
+  archive/image attestations, and report actual VM version/status/URL only.
+- [x] Serialize deployments without remote cancellation during DDL; durably fence
+  replay after crashes, retry terminal status delivery and preserve prior releases.
+  Offline trust/failure checks and the native ARM64 approved-pull rehearsal pass;
+  require the native rehearsal again on each final PR head.
+- [x] Use least-privilege workflow permissions and pinned third-party action
   revisions; keep untrusted PR content away from privileged events and secrets.
+- [ ] Install the reviewed puller, configure its dedicated App and protected
+  environment variable, and verify the first real approved deployment after OCI
+  exists. See deployment/AUTOMATION.md; no live VM path is claimed by CI.
 
 ### 8. Repository administration and contributor basics
 
@@ -212,8 +224,9 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
 - [x] Adopt feature branches and pull requests for all changes, with no permanent
   `dev` branch. Record the workflow in `AGENTS.md` and the README; branch
   protection now enforces PRs and passing CI on GitHub.
-- [x] Create SSH-signed commits. Local signature verification still needs
-  `gpg.ssh.allowedSignersFile`; GitHub verified the CI commit's signature.
+- [x] Create SSH-signed commits and configure the local ignored allowed-signers
+  trust file. Verify commit signatures locally and through GitHub; releases
+  additionally require signed annotated tags.
 - [x] Protect `main` with the active `Protect main` ruleset: require PRs, resolved
   conversations, and `Python checks`, `PostgreSQL tests`, and `Production
   containers` from GitHub Actions.
