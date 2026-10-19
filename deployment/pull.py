@@ -113,6 +113,54 @@ def source_release(api: GitHubAPI, tag: str) -> dict[str, Any]:
         not release["draft"] and not release["prerelease"] and release["tag_name"] == tag,
         "Unpublished stable release",
     )
+    # A published GitHub Release exists BEFORE its build/assets are ready.
+    # Require the exact release workflow's latest run/attempt to have finished,
+    # not merely main CI or the first archive arriving during a partial upload.
+    release_runs = get(
+        api, f"actions/workflows/release.yaml/runs?head_sha={sha}&event=release&per_page=100"
+    )["workflow_runs"]
+    candidates = [item for item in release_runs if item.get("head_branch") == tag]
+    require(bool(candidates), "No workflow run for this exact release tag")
+    published = max(candidates, key=lambda item: item["id"])
+    require(
+        published["head_sha"] == sha
+        and published["event"] == "release"
+        and published["path"] == ".github/workflows/release.yaml"
+        and published["repository"]["full_name"] == api.repository
+        and published["status"] == "completed"
+        and published["conclusion"] == "success",
+        "Latest exact release workflow has not succeeded",
+    )
+    release_jobs = get(api, f"actions/runs/{published['id']}/jobs?filter=latest&per_page=100")
+    require(
+        release_jobs["total_count"] <= 100
+        and {
+            "Verify release source",
+            "Publish ARM64 release",
+        }
+        <= {item["name"] for item in release_jobs["jobs"] if item["conclusion"] == "success"},
+        "Required release jobs have not succeeded",
+    )
+    assets = get(api, f"releases/{release['id']}/assets?per_page=100")
+    require(isinstance(assets, list) and len(assets) < 100, "Too many release assets")
+    expected = {
+        "release.json",
+        "image-digest.txt",
+        "SHA256SUMS",
+        f"gh-random-{tag}-deployment.tar.gz",
+    }
+    for name in expected:
+        matching = [item for item in assets if item["name"] == name]
+        require(
+            len(matching) == 1
+            and matching[0].get("state") == "uploaded"
+            and type(matching[0].get("id")) is int
+            and matching[0]["id"] > 0
+            and type(matching[0].get("size")) is int
+            and 0 < matching[0]["size"] <= MAX_ARCHIVE
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", matching[0].get("digest", "")) is not None,
+            "Release deployment assets are incomplete",
+        )
     return {"commit": sha, "tag_object": ref["sha"], "release": release, "files": files}
 
 

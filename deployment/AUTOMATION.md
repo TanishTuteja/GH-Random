@@ -19,7 +19,9 @@ status; timeouts mean *unconfirmed*, never successful deployment.
 1. The workflow rejects non-main dispatches and verifies a published stable
    `vMAJOR.MINOR.PATCH` release: annotated GitHub-verified signature, matching
    source version, main ancestry and latest successful main-push CI including
-   all three required jobs.
+   all three required jobs. The exact tag/commit's latest release workflow must
+   also finish successfully with both release jobs and all four uploaded assets;
+   merely publishing a Release or uploading the archive first is not readiness.
 2. A Deployment payload is not authorization. The approved queue job uploads an
    immutable Actions artifact with the exact deployment ID and request. The VM
    independently checks its workflow/run/attempt, repository, event, main
@@ -28,13 +30,16 @@ status; timeouts mean *unconfirmed*, never successful deployment.
    installed, operator-reviewed workflow file must match the run's Git blob.
 3. Requests expire after 30 minutes before claim. The VM refuses canceled or
    completed workflow runs and rechecks approval immediately before starting.
-   A newer processed request supersedes older queued requests; no silent old
+   A newer authenticated claim supersedes older queued requests; an unapproved
+   request's rejection journal cannot supersede legitimate work. No silent old
    version is applied later. A rejected request requires a fresh dispatch.
 4. The VM rechecks release/source CI and compares **every** archive file with
    the signed commit's Git blob, not just the archive's own manifest. The only
    transformation allowed is the documented immutable image line in the
    example Compose environment. Tar links, duplicate/traversing paths, unknown
    source files and oversized archives are rejected without extraction.
+   The whole decompressed gzip stream is capped before parsing tar extension
+   headers, not merely after the parser yields ordinary files.
 5. GitHub CLI cryptographically verifies both archive and exact OCI digest
    attestations, restricted to this repository's `release.yaml`, the exact
    source commit and version ref, and GitHub-hosted runners. Unsigned BuildKit
@@ -143,7 +148,11 @@ is canceled, times out, or another dispatch arrives. Do not stop/restart the
 host service during DDL merely because the observer disappeared.
 
 Each claimed request has a private durable journal. Terminal status delivery
-is retried on later polls if GitHub was temporarily unreachable. A restart
+is retried from local records independently of remote queue pagination if
+GitHub was temporarily unreachable. Only a returned status from the dedicated
+App acknowledges a journal; matching unrelated statuses do not. A malformed
+status response never replaces a real successful execution with a preflight
+failure. A restart
 after an in-progress journal marks it `error` and **never replays migrations**.
 Inspect the deployment journal, actual containers, current pointer and schema,
 then make a new approved request or follow the manual recovery runbook.

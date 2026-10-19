@@ -234,6 +234,44 @@ def published(pull_tools, approved):
                 "draft": False,
                 "prerelease": False,
             },
+            f"actions/workflows/release.yaml/runs?head_sha={sha}&event=release&per_page=100": {
+                "workflow_runs": [
+                    {
+                        "id": 30,
+                        "head_sha": sha,
+                        "head_branch": "v0.1.0",
+                        "event": "release",
+                        "path": ".github/workflows/release.yaml",
+                        "repository": {"full_name": api.repository},
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ]
+            },
+            "actions/runs/30/jobs?filter=latest&per_page=100": {
+                "total_count": 2,
+                "jobs": [
+                    {"name": name, "conclusion": "success"}
+                    for name in ("Verify release source", "Publish ARM64 release")
+                ],
+            },
+            "releases/8/assets?per_page=100": [
+                {
+                    "name": name,
+                    "state": "uploaded",
+                    "id": index + 1,
+                    "size": 100,
+                    "digest": "sha256:" + "c" * 64,
+                }
+                for index, name in enumerate(
+                    (
+                        "release.json",
+                        "image-digest.txt",
+                        "SHA256SUMS",
+                        "gh-random-v0.1.0-deployment.tar.gz",
+                    )
+                )
+            ],
         }
     )
     digest = "sha256:" + "c" * 64
@@ -319,6 +357,63 @@ def test_signed_source_changes_rejected(pull_tools, published, field, value):
     api.responses["git/tags/" + "b" * 40][field] = value
     with pytest.raises((ValueError, KeyError)):
         pull_tools.verify_bundle(api, request["payload"], archive(files))
+
+
+@pytest.mark.parametrize(
+    "status,conclusion",
+    [("in_progress", None), ("completed", "failure"), ("completed", "cancelled")],
+)
+def test_published_release_is_not_ready_until_exact_release_workflow_succeeds(
+    pull_tools, published, status, conclusion
+):
+    api, request, _ = published
+    path = (
+        f"actions/workflows/release.yaml/runs?head_sha={request['sha']}&event=release&per_page=100"
+    )
+    api.responses[path]["workflow_runs"][0].update(status=status, conclusion=conclusion)
+    with pytest.raises(ValueError, match="release workflow"):
+        pull_tools.source_release(api, "v0.1.0")
+
+
+@pytest.mark.parametrize(
+    "name", ["release.json", "image-digest.txt", "SHA256SUMS", "gh-random-v0.1.0-deployment.tar.gz"]
+)
+def test_partial_release_asset_upload_is_not_deployable(pull_tools, published, name):
+    api, _, _ = published
+    api.responses["releases/8/assets?per_page=100"] = [
+        item for item in api.responses["releases/8/assets?per_page=100"] if item["name"] != name
+    ]
+    with pytest.raises(ValueError, match="incomplete"):
+        pull_tools.source_release(api, "v0.1.0")
+
+
+def test_latest_failed_release_attempt_cannot_use_old_success(pull_tools, published):
+    api, request, _ = published
+    path = (
+        f"actions/workflows/release.yaml/runs?head_sha={request['sha']}&event=release&per_page=100"
+    )
+    old = api.responses[path]["workflow_runs"][0]
+    api.responses[path]["workflow_runs"].append(
+        {**old, "id": 31, "status": "completed", "conclusion": "failure"}
+    )
+    with pytest.raises(ValueError, match="release workflow"):
+        pull_tools.source_release(api, "v0.1.0")
+
+
+def test_other_tag_run_and_missing_release_jobs_are_rejected(pull_tools, published):
+    api, request, _ = published
+    path = (
+        f"actions/workflows/release.yaml/runs?head_sha={request['sha']}&event=release&per_page=100"
+    )
+    api.responses[path]["workflow_runs"][0]["head_branch"] = "v0.2.0"
+    with pytest.raises(ValueError, match="exact release tag"):
+        pull_tools.source_release(api, "v0.1.0")
+    api.responses[path]["workflow_runs"][0]["head_branch"] = "v0.1.0"
+    api.responses["actions/runs/30/jobs?filter=latest&per_page=100"]["jobs"][1]["conclusion"] = (
+        "skipped"
+    )
+    with pytest.raises(ValueError, match="release jobs"):
+        pull_tools.source_release(api, "v0.1.0")
 
 
 def test_claimed_interrupted_request_is_not_reexecuted(pull_tools, approved, tmp_path, monkeypatch):
@@ -428,7 +523,17 @@ def test_cancel_rechecked_before_claim_and_terminal_delivery_never_replays(
             "id": 9,
             "size": len(raw),
             "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "state": "uploaded",
         }
+    ] + [
+        {
+            "name": name,
+            "state": "uploaded",
+            "id": index + 10,
+            "size": 100,
+            "digest": "sha256:" + "c" * 64,
+        }
+        for index, name in enumerate(("release.json", "image-digest.txt", "SHA256SUMS"))
     ]
     api.responses["deployments/100"] = request
     api.downloads["releases/assets/9"] = raw
