@@ -563,6 +563,19 @@ installation, alerts, and off-site backup setup remain separate deployment work.
 
 ### Creating a release (not deploying it)
 
+The first verified release is [v0.1.0](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.0),
+from source `a312576a631ab575894e2a780ada1904844f0569`:
+
+```text
+ghcr.io/tanishtuteja/gh-random@sha256:6917abb8e53573cb7b6040060621e6044b4959165403c9402e25ff00bb465959
+```
+
+The [publication workflow](https://github.com/TanishTuteja/GH-Random/actions/runs/39312984113)
+passed real ARM64 smoke tests, provenance/SBOM checks and signed image/archive
+verification. All four assets, matching signed-source files and anonymous digest
+pulls were independently checked locally. This is an **ARM64 release, not a live
+website**. Configure OCI and complete the live acceptance checklist in TODO.md.
+
 Merging a PR does not publish an image or change production. When a release
 candidate is ready, first merge it into `main` and wait for all three **main-push**
 CI jobs to pass. PR checks alone do not qualify the merge commit for release.
@@ -630,7 +643,9 @@ first publish, open the package's settings, change its visibility to public,
 and verify an anonymous digest pull with a clean Docker configuration before
 deploying. Do not copy the Actions token onto the VM. Publishing uses GitHub's
 [documented GHCR workflow authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry);
-package visibility/anonymous access still need that first-release verification.
+`v0.1.0` package visibility and anonymous full-digest access were verified on
+2026-10-20. Recheck access when changing package ownership or publishing a new
+package; do not assume a future package inherits that setting.
 
 On the Linux VM, download these four release assets into a new version-specific
 directory. Verify before extracting (checksums detect corruption, not a malicious

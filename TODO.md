@@ -10,6 +10,9 @@ Current execution scope: complete every non-OCI item. OCI provisioning, private
 VM configuration and acceptance that requires the live OCI stack remain manual
 and unchecked. GitHub administration/releases and repository implementation are
 still in scope; they must not be treated as OCI prerequisites to avoid doing them.
+On 2026-10-20 the operator explicitly chose to configure and test Gmail alerts
+alongside OCI setup. That private account/credential and inbox-acceptance work
+remains manual and unchecked; monitoring stays disabled until acceptance.
 
 ## Repository implementation
 
@@ -196,13 +199,15 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   include source/version image labels and document signed release creation and
   rollback constraints. Request BuildKit provenance and an SBOM. Smoke-test the
   exact published digest before attaching assets; refuse completed asset rewrites.
-- [ ] Perform the first actual signed release/GHCR publish and verify all assets,
-  provenance/SBOM, image labels, and ARM64 digest smoke tests. Implementation and
-  offline/CI tests do not establish that publication permissions work.
+- [x] Publish signed `v0.1.0` and verify all four assets, source-matched archive,
+  signed archive/image attestations, actual provenance/SBOM, image labels and
+  ARM64 digest smoke tests. Actual publication and local acceptance evidence is
+  recorded below; this is no longer inferred from offline tests.
 - [x] Choose public GHCR images so the VM can pull without registry credentials.
-- [ ] After first publication, change the initially private GHCR package to public
-  and verify anonymous digest pulls. Never copy the temporary Actions token to
-  the VM. Do not announce/deploy a release until its workflow and assets are ready.
+- [x] Verify the first GHCR package is publicly accessible with a complete
+  anonymous exact-digest ARM64 pull using a credential-free Docker configuration.
+  Never copy the temporary Actions token to the VM. The release workflow and
+  all four deployment assets are ready; no production deployment has started.
 - [x] Implement the production workflow, protected production approval and
   outbound-only VM pull mechanism with a separate repository-scoped App. Bind
   approval to immutable run/attempt receipts, verify signed source and
@@ -243,6 +248,10 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
 - [x] Add contributor/conduct/security guidance, bug/feature/question forms,
   PR template and useful maintenance/deployment/dependency/security/test labels.
   Enable and verify private vulnerability reporting before publishing its link.
+- [x] Enable and read back free public-repository secret scanning and push
+  protection. Inspect alert identifiers/counts without exposing secret values.
+  No open secret/dependency alerts were reported at acceptance; this is not a
+  claim of exhaustive detection or vulnerability-free dependencies.
 - [x] Create GitHub's `production` environment with protected-branch restriction
   and owner review. Allow self-review for the solo maintainer; this is not a
   second-person audit. Actual deployment automation is tracked separately above.
@@ -282,11 +291,12 @@ through authenticated APIs, as recorded above.
 
 ## First-release acceptance sequence
 
-- [ ] Finish CI/protection and merge the release candidate to `main`.
+- [x] Finish CI/protection and merge the release candidate to `main` through PR
+  #25, with all three required checks green on the exact PR and merge commits.
 - [x] Rehearse deployment, encrypted/local restore and same-schema rollback with
   disposable data, including discovery and failure guards, in native ARM64 CI.
   Production/off-site acceptance remains separately unchecked above.
-- [ ] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
+- [x] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
   the expected ARM64 image and immutable digest.
 - [ ] Deploy that digest and matching files, back up as appropriate, migrate
   once, and start PostgreSQL/web/Caddy. Record the deployment in GitHub's
@@ -297,8 +307,39 @@ through authenticated APIs, as recorded above.
 - [ ] Verify DNS/HTTPS, intended public routes/ports, six-hour scheduling and
   sort rotation, failed/interrupted-run recovery, restored backups, alert delivery,
   and recovery after a host reboot.
-- [ ] Record operator commands, URL, current version/digest, recovery instructions,
-  and remaining optional improvements in the README.
+- [x] Record operator commands, verified release version/digest and recovery
+  instructions in the README and matching operator guides; retain product
+  enhancements in ROADMAP.md.
+- [ ] Record the actual public site URL and deployed version/container state
+  after OCI setup. A published release is not evidence of a deployed website.
+
+## First-release evidence — 2026-10-20
+
+- [Signed v0.1.0 release](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.0),
+  source `a312576a631ab575894e2a780ada1904844f0569`; the SSH tag verifies locally
+  and GitHub reports its signature valid. Release tags cannot be moved/deleted.
+- [Required PR checks](https://github.com/TanishTuteja/GH-Random/actions/runs/39311472537),
+  [merged-source checks](https://github.com/TanishTuteja/GH-Random/actions/runs/39312206594)
+  and [actual publication](https://github.com/TanishTuteja/GH-Random/actions/runs/39312984113)
+  all succeeded. Linux CI passed all 452 tests; the local Windows suite passed
+  450 with two Linux-only skips. Ruff and Pyright passed.
+- Exact published index:
+  `ghcr.io/tanishtuteja/gh-random@sha256:6917abb8e53573cb7b6040060621e6044b4959165403c9402e25ff00bb465959`.
+  The full anonymous pull succeeded without a registry credential/helper.
+- Downloaded all four assets and verified API digests, SHA256SUMS, matching inner/
+  outer metadata and 44 packaged deployment files against signed-source Git blobs.
+  Verified both archive and image signatures with the exact repository, workflow,
+  source/signer commit, tag ref and GitHub-hosted-runner policy.
+- Independently fetched the real OCI graph anonymously: ARM64 platform and exact
+  labels, SLSA v1 with six materials, linked SPDX 2.3 inventory with 672 packages.
+  Native CI exercised the published digest's deployment/restore/scheduler paths.
+- Actual GitHub App authentication also passed against this published image;
+  token revocation and private test-volume removal succeeded, without a crawl or
+  database operation. Only the pre-existing local database container remains up.
+
+Live OCI installation, actual DNS/TLS, private SMTP/telemetry configuration,
+inbox delivery, production crawls and off-site recovery remain separately
+unchecked. No public website or production deployment is claimed here.
 
 ## Implementation order
 
