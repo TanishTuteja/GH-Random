@@ -10,6 +10,9 @@ Current execution scope: complete every non-OCI item. OCI provisioning, private
 VM configuration and acceptance that requires the live OCI stack remain manual
 and unchecked. GitHub administration/releases and repository implementation are
 still in scope; they must not be treated as OCI prerequisites to avoid doing them.
+On 2026-10-20 the operator explicitly chose to configure and test Gmail alerts
+alongside OCI setup. That private account/credential and inbox-acceptance work
+remains manual and unchecked; monitoring stays disabled until acceptance.
 
 ## Repository implementation
 

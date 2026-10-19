@@ -809,3 +809,10 @@ controls are not proof that every possible secret or vulnerability is detected.
 Keep the OCI/live acceptance items unchecked: no host, site URL, provider inbox
 delivery or production deployment was established by publishing this release.
 
+## 2026-10-20 — Operator defers private email configuration to OCI setup
+
+The operator confirmed the GHCR package is already public, consistent with the
+verified full anonymous digest pull, and explicitly chose to configure Gmail
+with OCI setup. Leave App Passwords, private sender/recipient configuration and
+real inbox acceptance unchecked; do not collect secrets or enable monitoring now.
+
