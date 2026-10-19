@@ -1,0 +1,28 @@
+[Unit]
+Description=Publish safe success watermarks for independent GitHub monitoring
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/lib/gh-random/external_monitor.py publish --config /etc/gh-random/telemetry.json
+TimeoutStartSec=120s
+Restart=no
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+InaccessiblePaths=-/run/docker.sock -/etc/gh-random/github-app-private-key.pem -/etc/gh-random/postgres.env -/etc/gh-random/app.env -/etc/gh-random/crawler.env -/etc/gh-random/compose.env -/etc/gh-random/smtp-password
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal

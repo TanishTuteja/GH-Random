@@ -19,9 +19,12 @@ venv/
 *.env
 /deployment/alerts.json
 /deployment/backup.json
+/deployment/telemetry.json
+/deployment/pull.json
 pgadmin-password.txt
 *.age
 *.pem
+*.key
 crawl.log
 crawl-error.log
 web.log
