@@ -1,6 +1,6 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-18. `[x]` means implemented and
+Reviewed against the repository on 2026-10-20. `[x]` means implemented and
 locally verified; `[ ]` means work remains. Local checks do not establish that
 something works in production. OCI resources have not been verified. The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
@@ -209,7 +209,8 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
   archive/image attestations, and report actual VM version/status/URL only.
 - [x] Serialize deployments without remote cancellation during DDL; durably fence
   replay after crashes, retry terminal status delivery and preserve prior releases.
-  Offline trust/failure checks pass; native container rehearsal is required in CI.
+  Offline trust/failure checks and the native ARM64 approved-pull rehearsal pass;
+  require the native rehearsal again on each final PR head.
 - [x] Use least-privilege workflow permissions and pinned third-party action
   revisions; keep untrusted PR content away from privileged events and secrets.
 - [ ] Install the reviewed puller, configure its dedicated App and protected

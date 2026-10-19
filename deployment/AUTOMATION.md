@@ -59,6 +59,7 @@ The puller does not auto-replace its own trust root from a downloaded release.
 
 Use the existing host setup, encrypted backup and email guides first. The host
 needs Python 3.12+, Docker/Compose, OpenSSL, and a maintained official GitHub CLI
+**2.97.0 or newer** (older versions have a signer-workflow verification vulnerability)
 whose `gh attestation verify --help` includes `--source-digest`,
 `--signer-digest`, `--source-ref` and `--deny-self-hosted-runners`. Install CLI
 from its official signed package repository; record/update its installed
@@ -98,6 +99,7 @@ mode 0700). Preserve these relative paths:
 .github/workflows/deploy.yaml
 deployment/pull.py
 deployment/github_api.py
+deployment/attestations.py
 deployment/deploy.py
 deployment/database_backup.py
 deployment/notifications.py

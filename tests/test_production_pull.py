@@ -433,34 +433,28 @@ def test_claimed_interrupted_request_is_not_reexecuted(pull_tools, approved, tmp
     assert api.posts[-1][1]["state"] == "error"
 
 
-def test_attestation_policy_binds_exact_signed_release(pull_tools, tmp_path, monkeypatch):
+def test_puller_uses_shared_patched_attestation_policy(pull_tools, tmp_path, monkeypatch):
     api = API()
     api.credential = SimpleNamespace(token=lambda: "private-secret")
     calls = []
 
-    def run(command, **kwargs):
-        assert "private-secret" not in command
-        assert kwargs["env"]["GH_TOKEN"] == "private-secret"
-        assert kwargs["timeout"] == 120
-        calls.append(command)
-        return SimpleNamespace(returncode=0)
+    def verify(metadata, archive, gh, *, token):
+        calls.append((metadata, archive, gh, token))
 
-    monkeypatch.setattr(pull_tools.subprocess, "run", run)
-    pull_tools.attest(
-        api,
-        {"image": "ghcr.io/owner/repo@sha256:" + "c" * 64, "tag": "v0.1.0", "commit": "a" * 40},
-        tmp_path / "archive",
-        Path("gh"),
-    )
-    assert len(calls) == 2
-    for command in calls:
-        assert "--deny-self-hosted-runners" in command
-        assert (
-            command[command.index("--signer-workflow") + 1]
-            == "Owner/Repo/.github/workflows/release.yaml"
-        )
-        assert command[command.index("--source-ref") + 1] == "refs/tags/v0.1.0"
-        assert command[command.index("--source-digest") + 1] == "a" * 40
+    monkeypatch.setattr(pull_tools, "verify_attestations", verify)
+    metadata = {
+        "repository": api.repository,
+        "image": "ghcr.io/owner/repo@sha256:" + "c" * 64,
+        "digest": "sha256:" + "c" * 64,
+        "tag": "v0.1.0",
+        "commit": "a" * 40,
+    }
+    archive = tmp_path / "archive"
+    pull_tools.attest(api, metadata, archive, Path("gh"))
+    assert calls == [(metadata, archive, Path("gh"), "private-secret")]
+    with pytest.raises(ValueError, match="repository mismatch"):
+        pull_tools.attest(api, {**metadata, "repository": "Other/Repo"}, archive, Path("gh"))
+    assert len(calls) == 1
 
 
 def test_observer_rejects_forged_success(pull_tools, monkeypatch):

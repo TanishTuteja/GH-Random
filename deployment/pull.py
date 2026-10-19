@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from attestations import verify as verify_attestations
 from database_backup import check_private, private_file, sync_directory
 from deploy import CRITICAL_FILES, TAG, atomic_json, deployment_lock, require, validate_url
 from github_api import REPOSITORY, Credential, GitHubAPI
@@ -328,37 +329,9 @@ def verify_bundle(
 
 
 def attest(api: GitHubAPI, metadata: dict[str, Any], archive: Path, gh: Path) -> None:
-    """GitHub CLI verifies signed certificate identities, not self-asserted predicates."""
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith(("GH_", "GITHUB_", "SIGSTORE_"))
-    }
-    environment["GH_TOKEN"] = api.credential.token()
-    policy = [
-        "--repo",
-        api.repository,
-        "--signer-workflow",
-        api.repository + "/.github/workflows/release.yaml",
-        "--source-ref",
-        "refs/tags/" + metadata["tag"],
-        "--source-digest",
-        metadata["commit"],
-        "--signer-digest",
-        metadata["commit"],
-        "--deny-self-hosted-runners",
-        "--limit",
-        "10",
-    ]
-    for target in (str(archive), "oci://" + metadata["image"]):
-        result = subprocess.run(
-            [str(gh), "attestation", "verify", target, *policy],
-            env=environment,
-            capture_output=True,
-            timeout=120,
-            check=False,
-        )
-        require(result.returncode == 0, "Signed release attestation verification failed")
+    """Use exactly the same patched-CLI signer policy as release publication."""
+    require(metadata["repository"] == api.repository, "Attestation repository mismatch")
+    verify_attestations(metadata, archive, gh, token=api.credential.token())
 
 
 def status(api: GitHubAPI, identifier: int, state: str, description: str, *, url: str = "") -> Any:

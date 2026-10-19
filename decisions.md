@@ -759,3 +759,23 @@ with inbox delivery. Provider setup and real delivery tests remain unchecked.
 Create the durable operations ledger once as issue #26, set its repository
 variable, and explicitly keep MONITORING_ENABLED=false until live acceptance.
 
+## 2026-10-20 — Rehearsal and cross-review close release boundary gaps
+
+The actual ARM64 approved-pull rehearsal exposed a real non-root Caddy bind-file
+permission failure. Give only its public Caddyfile mode 0644; keep the private
+release parent directory and root scripts private. Rehearsal then passed real
+encrypted pre-DDL backup, migration, web/proxy smoke, previous-release preservation
+and no-replay checks. This is disposable CI evidence, not OCI acceptance.
+
+Bound the complete expanded gzip stream before tarfile can consume PAX/GNU
+metadata. Separate truthful execution state from a durable status outbox, retry
+outside the remote queue page, and let only authenticated claims supersede older
+requests. A malformed status response after deployment cannot replace recorded
+success with a false claim that no deployment started.
+
+Require completed exact-tag release publication and all four uploaded assets
+before queueing or applying. Share the same signed archive/image identity policy
+between publication and the VM, with official GitHub CLI >=2.97.0 rather than
+accepting a known-vulnerable signer-workflow verifier. Verify signatures before
+uploading usable assets; BuildKit graph consistency remains a separate check.
+

@@ -637,7 +637,8 @@ directory. Verify before extracting (checksums detect corruption, not a maliciou
 replacement of both assets and checksums). Replace `VERIFIED_COMMIT` below with
 the independently verified signed tag's full commit SHA, not an untrusted value
 read only from the downloaded archive. GitHub CLI is needed for attestation
-verification; see the automation guide for its required policy options:
+verification; use an official stable GitHub CLI 2.97.0 or newer and see the
+automation guide for its required policy options:
 
 ~~~sh
 sha256sum --check SHA256SUMS
