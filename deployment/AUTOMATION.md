@@ -180,6 +180,19 @@ approval ZIP and release archive before submitting a fresh deployment request.
 Requests expire after 30 minutes; never extend that window to revive an old
 approval.
 
+The v0.1.1 attestation helper likewise depended on CLI configuration/cache paths
+under the home directory hidden by `ProtectHome=true`: its environment filter
+removed the unit's `GH_CONFIG_DIR`. Upgrade the separately installed
+`/opt/gh-random-automation/deployment/attestations.py` from the reviewed signed
+fix commit with a checked file checksum. The corrected helper creates fresh
+private temporary GH/XDG configuration, cache, data and state directories for
+the CLI, cleans them after success or failure, and continues removing caller
+credential/debug/trust overrides. Do not enable home-directory access, use a
+personal CLI login, persist the App token, or weaken signature verification to
+work around this. Verify both archive and image with the actual service
+filesystem restrictions before submitting another fresh request. Keep failed
+pre-claim staging directories for diagnosis; a fresh request uses its own path.
+
 ## Deploy, observe, recover
 
 Dispatch `Production deployment` on **main** with the published version, review

@@ -243,8 +243,10 @@ VM steps; do not attempt remote access or live deployment.
   During v0.1.1 setup, apply the documented alert-state systemd override and
   verify an idle poll plus its recovery notification before dispatching. Upgrade
   the bootstrap HTTP client for Actions artifact media negotiation and verify
-  actual approval ZIP/release archive downloads. Live deployment acceptance
-  remains pending until the operator confirms it.
+  actual approval ZIP/release archive downloads. Upgrade the attestation helper
+  to use isolated writable CLI configuration/cache directories and verify both
+  signatures inside the service sandbox. Live deployment acceptance remains
+  pending until the operator confirms it.
 
 ### 8. Repository administration and contributor basics
 
