@@ -1,6 +1,6 @@
 """Disposable real pull-to-deploy rehearsal; GitHub/signature oracles are fixtures.
 
-Called only by the existing isolated native ARM64 deployment harness. No GitHub,
+Called only by the existing isolated native AMD64 deployment harness. No GitHub,
 SMTP provider, OCI account or existing user database is contacted.
 """
 
@@ -28,7 +28,7 @@ def check(
 ) -> None:
     assert os.environ.get("GITHUB_ACTIONS") == "true" and sys.platform == "linux"
     original = json.loads((release / "release.json").read_text())
-    assert original["platform"] == "linux/arm64"
+    assert original["platform"] == "linux/amd64"
     directory = workspace / "pull-rehearsal"
     directory.mkdir(mode=0o700)
 

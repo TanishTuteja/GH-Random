@@ -1,4 +1,4 @@
-"""Check the exact ARM64 OCI image and its BuildKit SBOM/provenance graph.
+"""Check the exact AMD64 OCI image and its BuildKit SBOM/provenance graph.
 
 This checks content and source consistency, NOT publisher authenticity. The release
 workflow separately verifies GitHub's signed artifact attestation. ORAS uses the
@@ -255,12 +255,8 @@ def verify(image: str, repository: str, commit: str, tag: str, fetch: Fetch) -> 
     require(len(runnable) == 1, "Expected a single runnable platform")
     target = runnable[0]
     require(
-        target.get("platform")
-        in (
-            {"os": "linux", "architecture": "arm64"},
-            {"os": "linux", "architecture": "arm64", "variant": "v8"},
-        ),
-        "Expected linux/arm64 image",
+        target.get("platform") == {"os": "linux", "architecture": "amd64"},
+        "Expected linux/amd64 image",
     )
     image_manifest = checked(fetch, "manifest", target)
     require(
@@ -269,7 +265,7 @@ def verify(image: str, repository: str, commit: str, tag: str, fetch: Fetch) -> 
     )
     config = checked(fetch, "blob", descriptor(image_manifest.get("config"), CONFIG))
     require(
-        config.get("os") == "linux" and config.get("architecture") == "arm64",
+        config.get("os") == "linux" and config.get("architecture") == "amd64",
         "Image config platform mismatch",
     )
     labels = config.get("config", {}).get("Labels", {})
@@ -357,7 +353,7 @@ def verify(image: str, repository: str, commit: str, tag: str, fetch: Fetch) -> 
         "repository": repository,
         "commit": commit,
         "tag": tag,
-        "platform": "linux/arm64",
+        "platform": "linux/amd64",
         "image_manifest_digest": target["digest"],
         "attestation_manifest_digest": attest["digest"],
         "provenance": results["provenance"],
@@ -386,7 +382,7 @@ def main() -> int:
             with args.output.open("x", encoding="utf-8") as output:
                 json.dump(result, output, indent=2, sort_keys=True)
                 output.write("\n")
-        print("Exact ARM64 image, BuildKit Git provenance and SPDX inventory verified.")
+        print("Exact AMD64 image, BuildKit Git provenance and SPDX inventory verified.")
         return 0
     except Exception as error:
         print(

@@ -56,6 +56,7 @@ DEPLOYMENT_FILES = (
     "deployment/systemd/gh-random-backup.service",
     "deployment/systemd/gh-random-backup.timer",
     "deployment/OPERATIONS.md",
+    "deployment/LOW_MEMORY.md",
     "deployment/alerts.json.example",
     "deployment/systemd/gh-random-alert@.service",
     "deployment/systemd/gh-random-monitor.service",
@@ -167,7 +168,7 @@ def verify_release(
         "image": f"ghcr.io/{repository.lower()}",
         "ci_run_id": run["id"],
         "release_id": release_id,
-        "platform": "linux/arm64",
+        "platform": "linux/amd64",
     }
 
 

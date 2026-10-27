@@ -179,7 +179,7 @@ backup archives, database volumes, or previous signed release assets.
 
 Offline tests forge payloads, canceled/branch runs, altered workflow pins,
 replayed/mutated receipts, changed signed source, unsafe tar paths, forged
-status origin and interrupted journals. The disposable ARM64 container
+status origin and interrupted journals. The disposable native container
 rehearsal exercises the same pull/deploy path with GitHub/attestation metadata
 fixtures and real Docker, PostgreSQL, age encryption/read-back, migration,
 web/proxy replacement and discovery. Fixtures are **not** proof of a live

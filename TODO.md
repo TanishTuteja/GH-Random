@@ -266,8 +266,10 @@ through authenticated APIs, as recorded above.
   current Always Free quotas, ARM availability, storage, and network costs.
   Use eligible resources and quotas/budget notifications for the zero-cost
   requirement; budget alerts alone do not cap spending.
-- [ ] Provision the ARM VM with persistent storage; install Docker Engine,
-  Compose, and host tools. Document boot/data volume preservation, automatic
+- [ ] Complete setup of the provisioned AMD64 E2.1.Micro (Ubuntu 24.04 Minimal,
+  1 GB RAM, 100 GB boot volume); install Docker Engine, Compose, and host tools.
+  A1 provisioning failed for lack of capacity. The VM boots and Bastion SSH
+  access works with the replacement key. Document boot/data volume preservation, automatic
   startup, and recovery after idle-instance reclamation.
 - [ ] Reserve/record the public IP, choose a hostname, and configure DNS. Use a
   free subdomain or separately acquired domain; OCI is not a free registrar.
@@ -298,7 +300,11 @@ through authenticated APIs, as recorded above.
   Production/off-site acceptance remains separately unchecked above.
 - [x] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
   the expected ARM64 image and immutable digest.
-- [ ] Deploy that digest and matching files, back up as appropriate, migrate
+- [ ] Publish a new signed AMD64 release after the low-memory PR and required
+  CI checks pass. v0.1.0 is ARM64-only and cannot be used on the current VM.
+  Rehearse actual container memory use before release; finish live micro-VM
+  acceptance in [LOW_MEMORY.md](deployment/LOW_MEMORY.md) before public launch.
+- [ ] Deploy the new AMD64 digest and matching files, back up as appropriate, migrate
   once, and start PostgreSQL/web/Caddy. Record the deployment in GitHub's
   `production` environment as part of the deployment workflow.
 - [ ] Complete the first full crawl and confirm an active catalog before launch.

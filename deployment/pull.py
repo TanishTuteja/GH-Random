@@ -137,7 +137,7 @@ def source_release(api: GitHubAPI, tag: str) -> dict[str, Any]:
         release_jobs["total_count"] <= 100
         and {
             "Verify release source",
-            "Publish ARM64 release",
+            "Publish AMD64 release",
         }
         <= {item["name"] for item in release_jobs["jobs"] if item["conclusion"] == "success"},
         "Required release jobs have not succeeded",
@@ -299,7 +299,7 @@ def verify_bundle(
         and metadata["commit"] == source["commit"]
         and metadata["tag_object"] == source["tag_object"]
         and metadata["release_id"] == payload["release_id"]
-        and metadata["platform"] == "linux/arm64"
+        and metadata["platform"] == "linux/amd64"
         and re.fullmatch(r"sha256:[0-9a-f]{64}", metadata["digest"]) is not None
         and metadata["image"] == f"ghcr.io/{api.repository.lower()}@{metadata['digest']}",
         "Deployment release metadata mismatch",

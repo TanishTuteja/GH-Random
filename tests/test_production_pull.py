@@ -76,7 +76,9 @@ def approved(pull_tools):
         "sha": sha,
         "creator": {"login": "github-actions[bot]"},
         "performed_via_github_app": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        # GitHub timestamps have second precision. Windows' datetime.now and
+        # time.time can differ slightly within the same subsecond clock tick.
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "payload": payload,
     }
     run = {
@@ -176,7 +178,7 @@ def test_expired_request_and_changed_installed_workflow_rejected(pull_tools, app
     request["created_at"] = "2020-01-01T00:00:00Z"
     with pytest.raises(ValueError, match="Expired"):
         pull_tools.verify_request(api, request)
-    request["created_at"] = datetime.now(timezone.utc).isoformat()
+    request["created_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     api.responses[f"contents/{pull_tools.WORKFLOW}?ref={request['sha']}"]["sha"] = "0" * 40
     with pytest.raises(ValueError, match="Workflow changed"):
         pull_tools.verify_request(api, request)
@@ -267,7 +269,7 @@ def published(pull_tools, approved):
                 "total_count": 2,
                 "jobs": [
                     {"name": name, "conclusion": "success"}
-                    for name in ("Verify release source", "Publish ARM64 release")
+                    for name in ("Verify release source", "Publish AMD64 release")
                 ],
             },
             "releases/8/assets?per_page=100": [
@@ -300,7 +302,7 @@ def published(pull_tools, approved):
         "commit": sha,
         "tag_object": "b" * 40,
         "release_id": 8,
-        "platform": "linux/arm64",
+        "platform": "linux/amd64",
         "digest": digest,
         "image": image,
         "deployment_files": {
@@ -319,6 +321,18 @@ def archive(files):
             member.size = len(data)
             output.addfile(member, io.BytesIO(data))
     return stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    "platform", ["linux/arm64", "linux/386", "windows/amd64", "linux/amd64/v3"]
+)
+def test_pull_worker_rejects_bundles_for_other_platforms(pull_tools, published, platform):
+    api, request, files = published
+    metadata = json.loads(files["release.json"])
+    metadata["platform"] = platform
+    files["release.json"] = pull_tools.canonical(metadata)
+    with pytest.raises(ValueError, match="release metadata mismatch"):
+        pull_tools.verify_bundle(api, request["payload"], archive(files))
 
 
 def test_bundle_independently_matches_signed_source_not_manifest(pull_tools, published):
