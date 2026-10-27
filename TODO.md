@@ -240,6 +240,9 @@ VM steps; do not attempt remote access or live deployment.
 - [ ] Install the reviewed puller, configure its dedicated App and protected
   environment variable, and verify the first real approved deployment after OCI
   exists. See deployment/AUTOMATION.md; no live VM path is claimed by CI.
+  During v0.1.1 setup, apply the documented alert-state systemd override and
+  verify an idle poll plus its recovery notification before dispatching. Live
+  acceptance remains pending until the operator confirms those checks.
 
 ### 8. Repository administration and contributor basics
 

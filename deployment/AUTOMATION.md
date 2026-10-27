@@ -139,6 +139,34 @@ the unit's filesystem restrictions are defense in depth, not a Docker sandbox.
 Atomic Compose configuration replacement needs write access to its private
 parent directory, not just the existing file inode.
 
+### Compatibility override for v0.1.1
+
+The v0.1.1 puller unit omitted `/var/lib/gh-random/alerts` from its writable
+paths. Under `ProtectSystem=strict`, even an idle successful poll cannot acquire
+the recovery notifier's alert lock. The separate failure-email handler can send
+an alert, so receiving that email does not imply the puller can update alert
+state. New unit installations include the missing path.
+
+For the immutable v0.1.1 release, install this operator override instead of
+editing the signed archive's files. Run unchanged on the VM while the puller
+timer is stopped, with no active deployment:
+
+```sh
+sudo install -d -o root -g root -m 0755 /etc/systemd/system/gh-random-pull.service.d
+printf '[Service]\nReadWritePaths=/var/lib/gh-random/alerts\n' | \
+  sudo tee /etc/systemd/system/gh-random-pull.service.d/alert-state.conf >/dev/null
+sudo chmod 0644 /etc/systemd/system/gh-random-pull.service.d/alert-state.conf
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /etc/systemd/system/gh-random-pull.service
+```
+
+`ReadWritePaths` is additive: do not insert an empty assignment that clears the
+existing deployment paths. Keep `ProtectSystem=strict` enabled. Validate one
+idle service poll and recovery-email delivery before re-enabling its timer or
+dispatching the first deployment. Keep the override until a future reviewed
+unit installation includes this path; no replacement image is needed solely
+for this host-unit correction.
+
 ## Deploy, observe, recover
 
 Dispatch `Production deployment` on **main** with the published version, review
