@@ -46,6 +46,32 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
             check=check,
         )
 
+    # The host rehearsal is stdlib-only. Resolve Alembic's actual graph using
+    # the packaged runtime, so future migrations do not fork the synthetic bad
+    # release from an old baseline or leave coordinator assertions out of date.
+    migration_head = json.loads(
+        run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                base_image,
+                "python",
+                "-c",
+                "import json; from alembic.config import Config; "
+                "from alembic.script import ScriptDirectory; "
+                "print(json.dumps(ScriptDirectory.from_config(Config('alembic.ini'))"
+                ".get_current_head()))",
+            ],
+            capture=True,
+        ).stdout
+    )
+    assert isinstance(migration_head, str) and migration_head, (
+        "Expected one packaged migration head"
+    )
+
     images = []
     compose = []
     # Native unit tests need paths outside /home, /tmp and /var/tmp so the real
@@ -132,7 +158,7 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
                     (build / "bad_migration.py").write_text(
                         "from alembic import op\n"
                         'revision = "ci_bad_migration"\n'
-                        'down_revision = "20260930_01"\n'
+                        f"down_revision = {migration_head!r}\n"
                         "branch_labels = depends_on = None\n"
                         "def upgrade():\n"
                         '    op.execute("CREATE TABLE ci_must_rollback (id integer)")\n'
@@ -304,7 +330,7 @@ def rehearse(base_image: str, *, systemd: bool = False) -> None:
                     assert json.loads(agent.stdout.readline())["protocol"] == 1
                     agent.stdin.write('{"command":"migrate"}\n')
                     agent.stdin.flush()
-                    assert json.loads(agent.stdout.readline())["revision"] == "20260930_01"
+                    assert json.loads(agent.stdout.readline())["revision"] == migration_head
                     contender = run(
                         [
                             *compose,

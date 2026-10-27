@@ -46,7 +46,9 @@ memory. The exact published image must pass the same rehearsal before release
 assets are attached. This checks actual memory enforcement rather than adding
 up individual limits. Each rehearsal creates and removes only its own resources.
 The fixture has 50,000 active repositories, 28 retained snapshots and one expired
-snapshot (1,450,001 memberships initially). All 200 filter combinations run;
+snapshot (1,455,000 memberships initially). The expired snapshot also owns
+5,000 otherwise unreferenced repositories, exercising bulk orphan deletion.
+All 200 filter combinations run;
 each synthetic search returns one page, refreshing 20,000 repositories. This
 does not cover the maximum ten-page result set or a larger future catalog.
 

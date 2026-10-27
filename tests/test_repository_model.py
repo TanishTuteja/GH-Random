@@ -31,3 +31,10 @@ def test_catalog_schema_has_repository_and_generation_tables(database_engine: En
         "ix_repositories_github_updated_at",
         "ix_repositories_github_pushed_at",
     } <= indexes
+
+
+def test_repository_memberships_have_a_repository_lookup_index(database_engine: Engine) -> None:
+    # The generation-first composite PK does not efficiently support FK cleanup
+    # by repository ID. Inspect the actual PostgreSQL schema, not just metadata.
+    indexes = inspect(database_engine).get_indexes("generation_repositories")
+    assert any(index["column_names"] == ["github_id"] for index in indexes)

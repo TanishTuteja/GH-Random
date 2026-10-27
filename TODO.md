@@ -111,6 +111,10 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Implement three-day membership retention and cleanup of retired/failed
   generations older than seven days after successful publication, including
   orphaned repository metadata.
+- [ ] Verify and merge the repository-first membership lookup index and
+  additive migration before the AMD64 release. A populated-database benchmark
+  found repeated foreign-key scans during bulk orphan cleanup; the strengthened
+  memory fixture now includes 5,000 expired-only repositories.
 - [x] Add a systemd service and persistent six-hour UTC timer for a normal crawl,
   without `--resume`, using the verified deployed digest. Document IST times,
   one catch-up after missed slots, runtime limits, and failure/next-slot behavior.
