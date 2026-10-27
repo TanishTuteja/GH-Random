@@ -870,3 +870,17 @@ Caddy proposal #29 changed only the Compose fallback; update its environment
 template too. Close those superseded proposals only after the combined security
 fix passes protected CI and merges. Routine Actions updates remain separate.
 
+## 2026-10-27 — Prepare v0.1.1 and the operator-owned OCI handoff
+
+The operator explicitly retained all OCI, SSH and hostname work. Finish the
+repository and verified AMD64 release, then stop without accessing the VM.
+Include an ordered first-deployment guide with host, DNS, private App/SMTP,
+encrypted off-site backup, protected deployment and live acceptance steps.
+The deployment App also publishes telemetry; two Apps suffice for these roles.
+
+Fix the shipped puller's backup_dir and documented manual deploy/rollback
+commands to match backup.json's encrypted archive_dir. The prior template pair
+would fail deployment preflight; a policy regression now checks their equality.
+Keep release files immutable and live OCI acceptance unchecked. v0.1.1 replaces
+the ARM64-only initial release with a patched AMD64 image; it does not deploy it.
+

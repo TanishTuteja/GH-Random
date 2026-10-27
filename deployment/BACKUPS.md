@@ -152,7 +152,7 @@ existing safe restore tool with that directory and a **new** target database:
 
 ```sh
 python3 deployment/database_backup.py --env-file /etc/gh-random/compose.env \
-  --compose-file /opt/gh-random/releases/v0.1.0/compose.production.yaml \
+  --compose-file /opt/gh-random/releases/v0.1.1/compose.production.yaml \
   restore --backup /private/recovery/unsealed/gh-random-TIMESTAMP-ID \
   --target-database gh_random_restore_rehearsal --trust-backup
 ```

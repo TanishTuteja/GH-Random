@@ -11,7 +11,7 @@
   "state_dir": "/var/lib/gh-random/deployments",
   "release_dir": "/opt/gh-random/releases",
   "env_file": "/etc/gh-random/compose.env",
-  "backup_dir": "/var/backups/gh-random",
+  "backup_dir": "/var/backups/gh-random/encrypted",
   "backup_config": "/etc/gh-random/backup.json",
   "alerts_config": "/etc/gh-random/alerts.json",
   "gh_binary": "/usr/bin/gh",
