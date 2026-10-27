@@ -57,17 +57,23 @@ The authoritative definitions live in app/core/filters.py.
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), the
 [code of conduct](CODE_OF_CONDUCT.md), and [private security reporting](SECURITY.md).
 
-Requires Python 3.12 (selected by `.python-version`), uv 0.13.1, Docker Desktop,
+Requires Python 3.12.16+ (the 3.12 line selected by `.python-version`),
+uv 0.13.5, Docker Desktop,
 and a configured GitHub App installation and private key. Install the pinned uv
 version using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/),
 or install it with Python from a terminal with no virtual environment active:
 
 ~~~powershell
-python -m pip install --user "uv==0.13.1"
+python -m pip install --user "uv==0.13.5"
 ~~~
 
 Ensure the installed `uv` command is on your PATH (`uv --version`), then run the
 following from the project directory:
+
+Use a patched Python/pip installation for that bootstrap (pip 26.2.2+), or
+the official standalone uv installer. Older Python, pip, uv and certifi bundles
+can trust the compromised emSign CA; see the
+[Python security notice](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576/).
 
 ~~~powershell
 uv sync --locked --extra dev

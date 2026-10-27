@@ -852,3 +852,21 @@ checked on the VM. If latency, runtime or memory is unacceptable, retry A1 or
 review a second free database VM; do not silently increase limits. Swap may be
 an emergency host margin, not evidence that the workload fits in RAM.
 
+## 2026-10-27 — Fix the CA trust incident before the AMD64 release
+
+The pre-release audit found open critical Dependabot alert #2 for certifi and
+the related upstream uv advisory (GHSA-6q48-6c7w-9gw2 and GHSA-hq85-5cpj-mr62).
+Use certifi 2026.10.23 with an explicit 2026.10.19 minimum, pinned uv 0.13.5,
+and a Python 3.12.16 base. Remove unused base pip/ensurepip copies rather than
+shipping their separate old CA bundles. Verify the real packaged interpreter,
+stdlib/certifi trust stores and installer absence in container rehearsals.
+Refresh both Caddy pins to the reviewed 2.11.7 image whose actual Alpine CA
+bundle excludes the compromised emSign G3 root. Rebuild the release without
+Docker build cache; never replace the already published v0.1.0 assets.
+
+An offline inspection showed Dependabot's Python digest proposal #28 still
+contained Python 3.12.15, so use the newer official 3.12.16 index instead. The
+Caddy proposal #29 changed only the Compose fallback; update its environment
+template too. Close those superseded proposals only after the combined security
+fix passes protected CI and merges. Routine Actions updates remain separate.
+
