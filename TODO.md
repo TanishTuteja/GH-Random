@@ -241,8 +241,10 @@ VM steps; do not attempt remote access or live deployment.
   environment variable, and verify the first real approved deployment after OCI
   exists. See deployment/AUTOMATION.md; no live VM path is claimed by CI.
   During v0.1.1 setup, apply the documented alert-state systemd override and
-  verify an idle poll plus its recovery notification before dispatching. Live
-  acceptance remains pending until the operator confirms those checks.
+  verify an idle poll plus its recovery notification before dispatching. Upgrade
+  the bootstrap HTTP client for Actions artifact media negotiation and verify
+  actual approval ZIP/release archive downloads. Live deployment acceptance
+  remains pending until the operator confirms it.
 
 ### 8. Repository administration and contributor basics
 

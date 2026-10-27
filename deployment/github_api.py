@@ -238,10 +238,21 @@ def _request(
     binary: bool = False,
 ) -> bytes:
     validate_path(path)
+    # Actions artifact downloads negotiate the normal API media type before
+    # redirecting to ZIP bytes. Only release assets require octet-stream to
+    # select their content instead of their JSON metadata.
+    release_asset = re.fullmatch(
+        r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/assets/[0-9]+",
+        urlsplit(path).path,
+    )
     headers = {
         "Authorization": f"Bearer {token}",
         "User-Agent": "gh-random-operations",
-        "Accept": "application/octet-stream" if binary else "application/vnd.github+json",
+        "Accept": (
+            "application/octet-stream"
+            if binary and release_asset
+            else "application/vnd.github+json"
+        ),
         "X-GitHub-Api-Version": "2022-11-28",
     }
     data = None if payload is None else json.dumps(payload).encode()
