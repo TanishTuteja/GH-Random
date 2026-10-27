@@ -32,7 +32,7 @@ def test_hardened_auth_role_has_only_app_credentials_and_always_cleans_owned_res
     def docker(command, **kwargs):
         calls.append((command, kwargs))
         if command[:2] == ["image", "inspect"]:
-            return "arm64"
+            return "amd64"
         if command[:2] == ["volume", "create"]:
             volume.append(command[-1])
         if command[:2] == ["volume", "ls"]:

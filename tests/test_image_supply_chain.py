@@ -53,7 +53,7 @@ def graph(
         "config",
         {
             "os": "linux",
-            "architecture": "arm64",
+            "architecture": "amd64",
             "config": {
                 "Labels": {
                     "org.opencontainers.image.source": "https://github.com/" + REPO,
@@ -122,7 +122,7 @@ def graph(
         "vnd.docker.reference.type": "attestation-manifest",
         "vnd.docker.reference.digest": image["digest"],
     }
-    image["platform"] = {"os": "linux", "architecture": "arm64"}
+    image["platform"] = {"os": "linux", "architecture": "amd64"}
     index = node(
         "index",
         {"schemaVersion": 2, "mediaType": module.INDEX, "manifests": [image, attest]},
@@ -138,17 +138,28 @@ def verify(module: ModuleType, changes=None) -> dict[str, Any]:
 
 def test_exact_oci_graph_source_subject_and_inventory_pass(verifier) -> None:
     result = verify(verifier)
-    assert result["platform"] == "linux/arm64"
+    assert result["platform"] == "linux/amd64"
     assert result["provenance"]["source_commit"] == COMMIT
     assert result["provenance"]["materials"] == 2
     assert result["sbom"]["packages"] == 1
     assert result["sbom"]["version"] == "SPDX-2.3"
 
 
+def test_consistent_arm64_graph_cannot_pass_the_amd64_release_policy(verifier) -> None:
+    with pytest.raises(ValueError, match="linux/amd64"):
+        verify(
+            verifier,
+            {
+                "config": lambda d: d.update(architecture="arm64"),
+                "index": lambda d: d["manifests"][0]["platform"].update(architecture="arm64"),
+            },
+        )
+
+
 @pytest.mark.parametrize(
     ("stage", "change", "message"),
     [
-        ("config", lambda d: d.update(architecture="amd64"), "platform mismatch"),
+        ("config", lambda d: d.update(architecture="arm64"), "platform mismatch"),
         (
             "config",
             lambda d: d["config"]["Labels"].update({"org.opencontainers.image.revision": "b" * 40}),
@@ -156,8 +167,8 @@ def test_exact_oci_graph_source_subject_and_inventory_pass(verifier) -> None:
         ),
         (
             "index",
-            lambda d: d["manifests"][0]["platform"].update(architecture="amd64"),
-            "linux/arm64",
+            lambda d: d["manifests"][0]["platform"].update(architecture="arm64"),
+            "linux/amd64",
         ),
         ("index", lambda d: d["manifests"].pop(), "one image and one attestation"),
         (

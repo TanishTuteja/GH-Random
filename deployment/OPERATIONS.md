@@ -207,7 +207,8 @@ lifecycle rules must not expire every usable recovery copy during an outage.
    identity, and private configuration/credential recovery material. Recovery
    must not depend on files existing only on the lost VM. Revoke compromised
    access if appropriate.
-2. Provision a clean ARM64 host manually, patch it, install Docker/Compose and
+2. Provision a clean host matching the verified release architecture manually,
+   patch it, install Docker/Compose and
    required Python/age/OCI tools, configure private Bastion access and firewall,
    and recover production configuration with private ownership/permissions.
    Do not copy arbitrary executables or raw private state from a compromised VM.

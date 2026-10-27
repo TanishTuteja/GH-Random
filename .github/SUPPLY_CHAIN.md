@@ -14,7 +14,7 @@ python .github/scripts/verify_image_supply_chain.py \
   --image 'ghcr.io/tanishtuteja/gh-random@sha256:REPLACE_WITH_RELEASE_INDEX_DIGEST' \
   --repository TanishTuteja/GH-Random \
   --commit REPLACE_WITH_VERIFIED_40_CHARACTER_COMMIT \
-  --tag v0.1.0 \
+  --tag REPLACE_WITH_VERIFIED_RELEASE_TAG \
   --output "$RUNNER_TEMP/image-supply-chain.json"
 ```
 
@@ -32,9 +32,9 @@ no operator registry credential after anonymous pulls have been verified.
 The checker fetches raw manifests/config/statement blobs by immutable digest and
 checks every inspected descriptor's size and SHA-256. It verifies:
 
-- An OCI index with exactly one `linux/arm64` runnable image and one linked
+- An OCI index with exactly one `linux/amd64` runnable image and one linked
   BuildKit attestation manifest. Multi-platform releases need an explicit policy
-  and verifier change; they cannot silently pass an ARM64-only check.
+  and verifier change; they cannot silently pass this single-platform check.
 - Image config architecture/OS and exact repository/source/revision/version/MIT
   labels. These are consistency checks, not proof of authorship.
 - Attestation descriptor linkage to the image manifest and exactly one SPDX
@@ -64,6 +64,15 @@ file. A failure returns nonzero and must stop asset publication/deployment.
 Future BuildKit/schema changes fail closed until reviewed and tested.
 
 ## Verification evidence and limits
+
+New releases target the provisioned x86-64 OCI E2.1.Micro VM. Their metadata,
+native production-container CI, image build, graph verification and pull worker
+all require `linux/amd64`. This is an explicit target change, not a multi-platform
+release policy. The already published `v0.1.0` remains ARM64-only: its signed tag,
+image digest and deployment assets must not be changed or used on this VM.
+Use its matching source verifier to inspect that historical release; the current
+verifier deliberately rejects ARM64 images. A new signed release and verified
+AMD64 digest are required before deployment.
 
 Tests construct content-addressed fixture graphs, including tampered descriptor
 contents, wrong image/platform/source/subjects, missing inventory/materials,

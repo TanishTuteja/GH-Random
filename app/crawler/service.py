@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, literal, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -296,18 +296,17 @@ class CrawlService:
                 select(CatalogGeneration).where(CatalogGeneration.status == "active").limit(1)
             )
             if active_generation is not None:
-                active_memberships = session.scalars(
-                    select(GenerationRepository).where(
-                        GenerationRepository.generation_id == active_generation.id
+                # Copy within PostgreSQL rather than retaining one ORM object
+                # per catalog member in the crawler's memory until flush.
+                session.execute(
+                    insert(GenerationRepository).from_select(
+                        ["generation_id", "github_id", "last_seen_at"],
+                        select(
+                            literal(generation.id),
+                            GenerationRepository.github_id,
+                            GenerationRepository.last_seen_at,
+                        ).where(GenerationRepository.generation_id == active_generation.id),
                     )
-                )
-                session.add_all(
-                    GenerationRepository(
-                        generation_id=generation.id,
-                        github_id=membership.github_id,
-                        last_seen_at=membership.last_seen_at,
-                    )
-                    for membership in active_memberships
                 )
 
             crawl_run = CrawlRun(

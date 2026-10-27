@@ -368,7 +368,7 @@ tab. It runs three independent jobs on Ubuntu with Python 3.12:
 - `PostgreSQL tests`: the complete test suite against a fresh PostgreSQL 17
   service, followed by `alembic upgrade head` and `alembic check` to verify the
   baseline creates the schema and matches the models.
-- `Production containers`: build the production image on native ARM64, validate
+- `Production containers`: build the production image on native AMD64, validate
   production Compose and the HTTPS Caddy configuration, migrate a fresh database,
   check schema drift and the hardened crawler's local status command, then test
   the packaged web app through Caddy. Verify empty/seeded catalog discovery,
@@ -418,7 +418,9 @@ issuance/renewal still needs deployment verification.
 
 On failure, the script prints service status/logs. It cleans up its own test
 containers, volumes, networks, and image on exit, preserving development and
-production data. CI runs the same check on an ARM64 runner to match the VM.
+production data. CI runs the same check on an AMD64 runner to match the VM.
+It also runs the shared-memory rehearsal described in
+[the micro-VM guide](deployment/LOW_MEMORY.md).
 
 ### Database backup and restore rehearsal
 
@@ -582,26 +584,29 @@ CI jobs to pass. PR checks alone do not qualify the merge commit for release.
 Keep `project.version` in `pyproject.toml` aligned with the intended stable tag;
 version changes also need `uv lock` and the ordinary PR process.
 
-From an up-to-date, clean local `main`, create an annotated, signed tag:
+The next AMD64 release must use a new version (for example `v0.1.1`) after its
+version-bump PR is merged. v0.1.0 is already published and remains ARM64-only.
+After aligning the package version/lockfile, use an up-to-date, clean local
+`main` to create an annotated, signed tag:
 
 ~~~powershell
 git switch main
 git pull --ff-only
 git status --short
-git tag -s v0.1.0 -m "GH Random v0.1.0"
-git push origin v0.1.0
+git tag -s v0.1.1 -m "GH Random v0.1.1"
+git push origin v0.1.1
 ~~~
 
 `git tag -s` uses the configured SSH signing key, just like our signed commits.
 The signing public key must be registered on GitHub and the tag must show
-**Verified** there. Local `git verify-tag v0.1.0` additionally requires an
+**Verified** there. Local `git verify-tag v0.1.1` additionally requires an
 appropriate SSH allowed-signers file; a missing local trust file does not mean
 GitHub rejected the signature. Never create the tag through the release UI,
 which would bypass this signing step. The active release-tag ruleset blocks
 updates/deletion of `v*` with no bypass actors (verified on 2026-10-18).
 Fixes require a new version; never move or replace a published release tag.
 
-In GitHub → Releases → Draft a new release, select the **existing** `v0.1.0`
+In GitHub → Releases → Draft a new release, select the **existing** `v0.1.1`
 tag, write release notes, leave prerelease unchecked, and publish. The `Release`
 workflow then:
 
@@ -610,17 +615,19 @@ workflow then:
 2. Requires successful `Python checks`, `PostgreSQL tests`, and `Production
    containers` in the latest main-push CI run for that exact commit. A pending,
    cancelled, failed, or skipped required check stops publishing.
-3. Builds `linux/arm64` on a native ARM runner and publishes
-   `ghcr.io/tanishtuteja/gh-random:v0.1.0` using the temporary `GITHUB_TOKEN`.
+3. Builds `linux/amd64` on a native AMD64 runner and publishes
+   `ghcr.io/tanishtuteja/gh-random:v0.1.1` using the temporary `GITHUB_TOKEN`.
    It adds source/revision/version/license labels and BuildKit provenance/SBOM.
-   Initial releases are ARM64-only, not AMD64 images for Windows PCs.
+   New releases target the provisioned OCI E2 micro. The existing v0.1.0
+   release remains ARM64-only and must not be deployed on this AMD64 host.
 4. Pulls the **published digest**, then runs the isolated production Compose,
-   migration, crawler-status, and web/API checks against that exact image.
+   migration, crawler-status, web/API, and shared low-memory checks against
+   that exact image.
    It verifies the actual OCI provenance/SBOM graph and signs image and archive
    provenance using GitHub's OIDC identity. See the
    [supply-chain verification policy](.github/SUPPLY_CHAIN.md) for checks and limits.
 5. Attaches `image-digest.txt`, `release.json`, `SHA256SUMS`, and
-   `gh-random-v0.1.0-deployment.tar.gz` only after successful smoke tests.
+   `gh-random-v0.1.1-deployment.tar.gz` only after successful smoke tests.
    The archive contains matching Compose/Caddy files, safe configuration
    templates, deploy/backup scripts, README/license, and release metadata.
    Metadata includes SHA-256 hashes for every packaged deployment file.
@@ -803,7 +810,7 @@ forward fix or separate restore/recovery plan. After a failed deployment, the la
 good release is still `current.json` itself: re-applying that release may be the
 appropriate recovery, rather than going back one additional verified release.
 
-Local/ARM64 CI rehearses these paths with synthetic releases and disposable data.
+Local/native CI rehearses these paths with synthetic releases and disposable data.
 The rehearsal uses Docker's containerd image store for local digest-addressable
 images and a loopback-only HTTP Caddy port; production defaults remain HTTPS.
 CI configures that store using Docker's
@@ -920,22 +927,22 @@ observable. Install/configure the email handler and hourly monitor below before
 enabling production crawling. Live VM timer installation, reboot behavior, real
 GitHub authentication, and inbox delivery remain acceptance tasks.
 
-### Explicit live ARM64 GitHub App authentication smoke
+### Explicit live AMD64 GitHub App authentication smoke
 
 Unlike CI, `.github/scripts/check_github_auth.py` uses your real App credentials
 and contacts GitHub. From an activated local development environment, explicitly
-select a trusted ARM64 image and the private App env file. For a local rehearsal:
+select a trusted AMD64 image and the private App env file. For a local rehearsal:
 
 ~~~powershell
-docker build --platform linux/arm64 --tag gh-random:arm64-auth-smoke .
-python .github/scripts/check_github_auth.py --image gh-random:arm64-auth-smoke --env-file .env
+docker build --platform linux/amd64 --tag gh-random:amd64-auth-smoke .
+python .github/scripts/check_github_auth.py --image gh-random:amd64-auth-smoke --env-file .env
 ~~~
 
-After publication, prefer the pulled immutable ARM64 GHCR release digest instead
+After publication, prefer the pulled immutable AMD64 GHCR release digest instead
 of a local tag. The harness passes only App identifiers/key, never DATABASE_URL
 or the entire env file. It stages the key through stdin in a uniquely labelled
 temporary Docker volume as root-owned mode 0600 (Windows bind mounts do not
-model Unix ownership), then mounts it read-only into a root ARM64 role with all
+model Unix ownership), then mounts it read-only into a root AMD64 role with all
 capabilities dropped, a read-only root, no published ports and bounded resources.
 The credential-staging container has no network; the probe has outbound access.
 
@@ -1144,6 +1151,11 @@ WEB_MEMORY). PID ceilings are 256 for PostgreSQL and 128 for other roles.
 These are initial ceilings, not reserved capacity or measured sizing guarantees.
 Memory exhaustion can kill a process; inspect Docker State.OOMKilled and review
 limits against real crawl/backup traffic and the VM's RAM before launch.
+The current defaults target the 1 GB E2 micro: one web worker, 256 MiB database,
+128 MiB web, 192 MiB crawler, 128 MiB migration and 64 MiB Caddy. PostgreSQL
+memory/connection settings and `WEB_WORKERS` are also configurable in compose.env.
+Read [LOW_MEMORY.md](deployment/LOW_MEMORY.md) for tuning, test limits and the
+required live acceptance; do not use the ARM64 v0.1.0 image on this host.
 
 The release bundle includes an **optional host-wide** journal policy at
 deployment/systemd/journald-limits.conf.example. Review existing host policies

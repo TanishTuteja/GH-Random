@@ -1,4 +1,4 @@
-"""Explicit live App-auth smoke: ARM64, isolated root-owned key, no DB or crawl.
+"""Explicit live App-auth smoke: AMD64, isolated root-owned key, no DB or crawl.
 
 Unlike CI fixtures this contacts GitHub. Run only with operator approval using
 the local development environment and a trusted built/published application image.
@@ -29,7 +29,7 @@ import os, platform, stat
 import httpx
 from app.core.settings import get_github_app_settings
 from app.github.app_auth import GitHubAppClient, GITHUB_API_VERSION
-assert platform.machine() == 'aarch64' and os.getuid() == 0
+assert platform.machine() == 'x86_64' and os.getuid() == 0
 settings = get_github_app_settings()
 info = settings.github_app_private_key_path.stat()
 assert info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o600
@@ -51,7 +51,7 @@ finally:
                 }).status_code == 204
     finally:
         client.close()
-print('ARM64 root-owned key, App token, authenticated HTTPS and token revocation passed.')
+print('AMD64 root-owned key, App token, authenticated HTTPS and token revocation passed.')
 """
 
 
@@ -79,8 +79,8 @@ def smoke(image: str, settings: GitHubAppSettings) -> None:
         "Use a trusted gh-random local tag or immutable GHCR digest",
     )
     require(
-        docker(["image", "inspect", image, "--format", "{{.Architecture}}"]) == "arm64",
-        "The smoke image must already be available for ARM64",
+        docker(["image", "inspect", image, "--format", "{{.Architecture}}"]) == "amd64",
+        "The smoke image must already be available for AMD64",
     )
     key = settings.github_app_private_key_path.resolve(strict=True)
     require(key.is_file() and 0 < key.stat().st_size <= 65536, "Invalid App key file")
@@ -88,7 +88,7 @@ def smoke(image: str, settings: GitHubAppSettings) -> None:
     volume = "gh-random-auth-" + identifier
     hardened = [
         "--platform",
-        "linux/arm64",
+        "linux/amd64",
         "--user",
         "0:0",
         "--read-only",
@@ -182,7 +182,7 @@ def smoke(image: str, settings: GitHubAppSettings) -> None:
                 f"Auth smoke cleanup failed; inspect only owned resource {volume}.", file=sys.stderr
             )
             raise
-    print("ARM64 App authentication and token revocation passed; private test volume removed.")
+    print("AMD64 App authentication and token revocation passed; private test volume removed.")
 
 
 def main() -> int:

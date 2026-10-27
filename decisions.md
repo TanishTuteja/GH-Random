@@ -826,3 +826,29 @@ to accept divergent versions. This changes source for a future release, not the
 already published v0.1.0 archive or any live deployment. Existing installations
 must still use the documented separate proxy-maintenance procedure.
 
+## 2026-10-27 — Target the provisioned AMD64 micro and verify memory use
+
+A1 provisioning in Hyderabad failed for lack of host capacity. The operator
+provisioned E2.1.Micro with Ubuntu 24.04 Minimal, 952 MiB RAM, no swap and a
+100 GB boot volume, and verified normal startup plus Bastion SSH access after
+key replacement. Prepare an AMD64/low-memory PR before installing the stack.
+Keep v0.1.0 and its ARM64 image/assets immutable. New release builds, smoke
+checks and strict single-platform provenance policy target linux/amd64; this is
+not a multi-architecture release policy. A new signed version is still required.
+
+Use one configurable Uvicorn worker and conservative container ceilings and
+PostgreSQL settings in the deployment env template and Compose defaults. Copy
+active generation memberships with INSERT SELECT within the existing locked
+transaction, preserving their timestamps without materializing the whole
+catalog as Python ORM objects. No schema migration is needed.
+
+Rehearse actual containers under a shared 768 MiB no-swap cgroup, including
+retained memberships, synthetic crawl publication, discovery and pg_dump.
+Run it in required CI and against the exact published release digest. This
+does not simulate the micro's CPU baseline, all host services, encryption/upload,
+live GitHub pacing or maximum future catalog size. Hold public launch until
+live crawling, encrypted backups, alerts, reboot and multi-day retention are
+checked on the VM. If latency, runtime or memory is unacceptable, retry A1 or
+review a second free database VM; do not silently increase limits. Swap may be
+an emergency host margin, not evidence that the workload fits in RAM.
+

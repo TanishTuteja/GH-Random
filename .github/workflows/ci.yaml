@@ -107,8 +107,8 @@ jobs:
 
   containers:
     name: Production containers
-    # Match the planned Oracle VM using a native, standard ARM64 runner.
-    runs-on: ubuntu-24.04-arm
+    # Match the provisioned OCI E2.1.Micro VM using a native AMD64 runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out repository
@@ -129,7 +129,10 @@ jobs:
         with:
           runtime-basedir: /opt/gh-random-ci-docker
           daemon-config: |
-            {"features": {"containerd-snapshotter": true}}
+            {"features": {"containerd-snapshotter": true}, "exec-opts": ["native.cgroupdriver=systemd"]}
 
       - name: Validate and smoke-test production containers
         run: python .github/scripts/check_containers.py
+
+      - name: Rehearse concurrent discovery, crawl and backup within one GiB
+        run: python .github/scripts/check_low_memory.py

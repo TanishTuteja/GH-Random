@@ -163,7 +163,7 @@ cutover. Restore GitHub App/SMTP credentials and DNS/host policy from their
 separate recovery records; database archives intentionally do not contain them.
 Do not leave the offline private identity on the normal production VM afterwards.
 
-Local and native ARM64 CI rehearse the actual encryption, restore into a separate
+Local and native CI rehearse the actual encryption, restore into a separate
 PostgreSQL database, and restored page/API discovery. Native systemd CI also runs
 a failing backup timer followed by a normal successful slot using a **local fake
 object store**, validates failure/recovery email, and decrypts copied-back bytes

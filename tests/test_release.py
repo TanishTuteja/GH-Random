@@ -86,7 +86,7 @@ def test_accepts_verified_tag_and_exact_main_ci(
     assert metadata["tag_object"] == TAG_OBJECT
     assert metadata["ci_run_id"] == 42
     assert metadata["image"] == "ghcr.io/owner/example"
-    assert metadata["platform"] == "linux/arm64"
+    assert metadata["platform"] == "linux/amd64"
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
@@ -132,6 +132,47 @@ def test_second_crawler_cannot_recover_or_modify_a_live_run(
     searcher = FakeRepositorySearcher([_page(_payload(1))], on_search=contend)
     _service(session_factory, searcher, STARTED_AT).run_full_crawl()
     assert contender.calls == []
+
+
+def test_rolling_copy_preserves_memberships_without_loading_them_into_the_crawler(
+    session_factory: sessionmaker[Session],
+) -> None:
+    first = _service(
+        session_factory,
+        FakeRepositorySearcher([_page(*(_payload(i) for i in range(1, 101)))]),
+        STARTED_AT,
+    ).run_full_crawl()
+    loaded = []
+
+    def track_load(membership, context):
+        loaded.append(membership.github_id)
+
+    # An empty search response means no page ingestion needs membership objects.
+    # Carrying the active catalog forward must likewise avoid loading its entire
+    # membership table into Python as the catalog grows.
+    event.listen(GenerationRepository, "load", track_load)
+    try:
+        second = _service(
+            session_factory,
+            FakeRepositorySearcher([_page()]),
+            STARTED_AT + timedelta(hours=6),
+        ).run_full_crawl()
+    finally:
+        event.remove(GenerationRepository, "load", track_load)
+    assert loaded == []
+    with session_factory() as session:
+        original = session.execute(
+            select(GenerationRepository.github_id, GenerationRepository.last_seen_at)
+            .where(GenerationRepository.generation_id == first.generation_id)
+            .order_by(GenerationRepository.github_id)
+        ).all()
+        carried = session.execute(
+            select(GenerationRepository.github_id, GenerationRepository.last_seen_at)
+            .where(GenerationRepository.generation_id == second.generation_id)
+            .order_by(GenerationRepository.github_id)
+        ).all()
+    assert carried == original == [(i, STARTED_AT) for i in range(1, 101)]
+    assert second.repositories_seen == 0
 
 
 def test_migration_owner_prevents_crawl_before_any_search(
