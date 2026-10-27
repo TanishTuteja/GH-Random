@@ -124,7 +124,6 @@ def verify(metadata: dict[str, Any], archive: Path, gh: Path, *, token: str | No
         if not key.startswith(("GH_", "GITHUB_", "SIGSTORE_"))
     }
     environment.update(GH_TOKEN=selected, GH_HOST="github.com", GH_PROMPT_DISABLED="1")
-    version(run([str(gh), "--version"], environment, timeout=10, limit=4096))
     policy = [
         "--repo",
         metadata["repository"],
@@ -140,13 +139,29 @@ def verify(metadata: dict[str, Any], archive: Path, gh: Path, *, token: str | No
         "--limit",
         "10",
     ]
-    for target in (str(archive.resolve()), "oci://" + metadata["image"]):
-        run(
-            [str(gh), "attestation", "verify", target, *policy],
-            environment,
-            timeout=120,
-            limit=1024 * 1024,
-        )
+    # Never depend on the operator's home, cached credentials or writable
+    # host configuration. This also works with systemd ProtectHome=true and
+    # ProtectSystem=strict: the unit's private temporary directory is writable.
+    with tempfile.TemporaryDirectory(prefix="gh-random-attestation-") as temporary:
+        runtime = Path(temporary)
+        for variable in (
+            "GH_CONFIG_DIR",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ):
+            directory = runtime / variable.lower()
+            directory.mkdir(mode=0o700)
+            environment[variable] = str(directory)
+        version(run([str(gh), "--version"], environment, timeout=10, limit=4096))
+        for target in (str(archive.resolve()), "oci://" + metadata["image"]):
+            run(
+                [str(gh), "attestation", "verify", target, *policy],
+                environment,
+                timeout=120,
+                limit=1024 * 1024,
+            )
 
 
 def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

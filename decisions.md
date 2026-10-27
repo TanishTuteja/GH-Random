@@ -962,3 +962,28 @@ published v0.1.1 archive/image stay immutable and App permissions stay unchanged
 Verify both real authenticated download paths before a fresh approval. Do not
 weaken request expiry to keep an earlier queue request alive during diagnosis.
 
+## 2026-10-28 — Isolate the attestation CLI's writable runtime
+
+The next real request passed download/source checks but failed attestation
+verification before VM claim. In a native systemd diagnostic with the shipped
+filesystem restrictions, the existing helper passed the CLI version check and
+failed archive verification. The exact archive and OCI image both passed when
+only fresh private GH/XDG configuration, cache, data and state paths were
+provided. The helper removed the unit's `GH_CONFIG_DIR`, falling back to home
+paths that `ProtectHome=true` deliberately hides.
+
+Allocate one private temporary CLI runtime per verification, retain it for the
+version and both signature checks, and remove it on success or failure. Override
+GH/XDG paths explicitly, without inheriting cached user credentials, debug
+settings or Sigstore trust overrides. Preserve every signer/source/runner
+constraint, output/deadline limit, TLS check and the filesystem sandbox. Add
+native systemd coverage that exercises actual cache writes and confirms
+unrelated state stays read-only; cryptographic fixtures remain distinct from
+the operator's successful real archive/image checks.
+
+Upgrade only the separately installed bootstrap helper from a verified signed
+fix commit with a checked checksum. Preserve v0.1.1's published archive/image and
+the pre-claim candidate directory for diagnosis. Retire the unclaimed stalled
+request and require a fresh approval rather than relaxing expiry or replaying
+deployment state. End-to-end live deployment acceptance remains pending.
+

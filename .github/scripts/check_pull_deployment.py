@@ -26,14 +26,15 @@ from install_age import install  # noqa: E402
 
 
 def check_alert_sandbox(workspace: Path, project: str) -> None:
-    """Exercise notifier writes under the shipped puller's real filesystem policy."""
+    """Exercise notifier and attestation runtime writes inside the puller sandbox."""
     source = (ROOT / "deployment/systemd/gh-random-pull.service").read_text()
     settings = dict(
         line.split("=", 1)
         for line in source.splitlines()
-        if line.startswith(("ProtectSystem=", "ReadWritePaths="))
+        if line.startswith(("ProtectSystem=", "ProtectHome=", "PrivateTmp=", "ReadWritePaths="))
     )
     assert settings["ProtectSystem"] == "strict"
+    assert settings["ProtectHome"] == settings["PrivateTmp"] == "true"
     directory = workspace / "pull-alert-sandbox"
     directory.mkdir(mode=0o700)
 
@@ -46,13 +47,47 @@ def check_alert_sandbox(workspace: Path, project: str) -> None:
     for path in [*writable, alerts, blocked]:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "deployment/notifications.py", directory / "notifications.py")
+    shutil.copyfile(ROOT / "deployment/attestations.py", directory / "attestations.py")
+    # Model the CLI's real config/cache writes, not signature cryptography or
+    # remote GitHub responses. The live operator test verifies actual signatures.
+    gh = directory / "gh-fixture"
+    gh.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/python3
+            import os
+            import sys
+            from pathlib import Path
+
+            fallback = Path.home() / ".config" / "gh"
+            for variable in (
+                "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME",
+                "XDG_DATA_HOME", "XDG_STATE_HOME",
+            ):
+                location = Path(os.environ.get(variable, str(fallback)))
+                location.mkdir(parents=True, exist_ok=True)
+                (location / "cli-cache-fixture").write_text("private fixture state")
+            if sys.argv[1:] == ["--version"]:
+                print("gh version 2.102.0 (2026-09-30)")
+                print("https://github.com/cli/cli/releases/tag/v2.102.0")
+            else:
+                assert sys.argv[1:3] == ["attestation", "verify"]
+                print("fixture verified")
+            """
+        )
+    )
+    gh.chmod(0o700)
+    archive = directory / "subject.tar.gz"
+    archive.write_bytes(b"fixture subject; no real release or credential")
     probe = directory / "probe.py"
     probe.write_text(
         textwrap.dedent(
             f"""\
             import errno
             import json
+            import os
             from pathlib import Path
+            import attestations
             from notifications import Reporter
 
             # A positive result must not come from disabling the read-only sandbox.
@@ -76,6 +111,37 @@ def check_alert_sandbox(workspace: Path, project: str) -> None:
             assert json.loads((state / "alerts.json").read_text())["issues"] == {{}}
             assert (state / "alerts.lock").is_file()
             print("Puller sandbox permits alert locks and failure/recovery ledger writes.")
+
+            # The verifier must create its own private runtime instead of
+            # inheriting poisoned read-only config/cache paths or using HOME.
+            for variable in (
+                "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME",
+                "XDG_DATA_HOME", "XDG_STATE_HOME",
+            ):
+                os.environ[variable] = str(Path({str(blocked)!r}) / variable)
+            metadata = {{
+                "repository": "Owner/Repo",
+                "commit": "a" * 40,
+                "tag": "v0.1.0",
+                "digest": "sha256:" + "b" * 64,
+                "image": "ghcr.io/owner/repo@sha256:" + "b" * 64,
+            }}
+            calls = []
+            actual_run = attestations.run
+
+            def observe(arguments, environment, **options):
+                calls.append(arguments)
+                return actual_run(arguments, environment, **options)
+
+            attestations.run = observe
+            attestations.verify(
+                metadata, Path({str(archive)!r}), Path({str(gh)!r}), token="fixture-token"
+            )
+            assert len(calls) == 3
+            assert calls[1][3] == str(Path({str(archive)!r}).resolve())
+            assert calls[2][3] == "oci://" + metadata["image"]
+            assert not list(Path({str(blocked)!r}).iterdir())
+            print("Attestation CLI config/cache writes pass with protected HOME and filesystem.")
             """
         )
     )
@@ -96,6 +162,8 @@ def check_alert_sandbox(workspace: Path, project: str) -> None:
                 "--property=TimeoutStopSec=5s",
                 "--property=UMask=0077",
                 "--property=ProtectSystem=" + settings["ProtectSystem"],
+                "--property=ProtectHome=" + settings["ProtectHome"],
+                "--property=PrivateTmp=" + settings["PrivateTmp"],
                 "--property=ReadWritePaths=" + " ".join(map(str, writable)),
                 "/usr/bin/python3",
                 "-B",
