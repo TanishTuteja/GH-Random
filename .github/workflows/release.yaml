@@ -100,6 +100,7 @@ jobs:
           context: https://github.com/${{ github.repository }}.git#${{ needs.verify.outputs.commit }}
           platforms: linux/amd64
           push: true
+          no-cache: true
           tags: ${{ env.IMAGE }}:${{ env.RELEASE_TAG }}
           provenance: mode=max
           sbom: true

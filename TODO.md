@@ -13,6 +13,9 @@ still in scope; they must not be treated as OCI prerequisites to avoid doing the
 On 2026-10-20 the operator explicitly chose to configure and test Gmail alerts
 alongside OCI setup. That private account/credential and inbox-acceptance work
 remains manual and unchecked; monitoring stays disabled until acceptance.
+On 2026-10-27 the operator confirmed all OCI work, SSH and hostname setup will
+be done personally. Finish repository/release work, then hand off the remaining
+VM steps; do not attempt remote access or live deployment.
 
 ## Repository implementation
 

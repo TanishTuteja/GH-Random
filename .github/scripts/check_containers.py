@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,16 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
+def check_ca_roots(context: ssl.SSLContext) -> None:
+    assert not any(
+        value == "emSign ECC Root CA - G3"
+        for certificate in context.get_ca_certs()
+        for rdn in certificate["subject"]
+        for key, value in rdn
+        if key == "commonName"
+    ), "A packaged TLS trust store still contains the compromised emSign root"
+
+
 def smoke_inside_web() -> None:
     """Run through Caddy from the packaged web container, using disposable data."""
 
@@ -26,8 +37,30 @@ def smoke_inside_web() -> None:
 
     assert os.environ.get("GH_RANDOM_CONTAINER_SMOKE") == "1", "Not a CI smoke container"
     assert os.getuid() == 10001, "Web must run as the unprivileged application user"
-    for package in ("pytest", "ruff", "pyright", "hatchling"):
+    for package in ("pytest", "ruff", "pyright", "hatchling", "pip", "ensurepip"):
         assert importlib.util.find_spec(package) is None, f"Unexpected dev/build package: {package}"
+
+    import certifi
+
+    assert sys.version_info >= (3, 12, 16), "Use the patched Python 3.12 security release"
+    assert tuple(map(int, certifi.__version__.split("."))) >= (2026, 10, 19)
+    for context in (
+        ssl.create_default_context(),
+        ssl.create_default_context(cafile=certifi.where()),
+    ):
+        check_ca_roots(context)
+    # The venv does not expose global site packages: check the base interpreter
+    # separately so an unused vulnerable installer cannot hide behind isolation.
+    subprocess.run(
+        [
+            str(Path(sys.base_prefix) / "bin/python"),
+            "-c",
+            "import importlib.util; "
+            "assert all(importlib.util.find_spec(p) is None for p in ('pip', 'ensurepip'))",
+        ],
+        check=True,
+        timeout=10,
+    )
 
     opener = build_opener(ProxyHandler({}))
     host = os.environ.get("GH_RANDOM_SMOKE_HOST", "localhost")
@@ -392,6 +425,22 @@ def check_containers(existing_image: str | None = None) -> None:
             print(f"Testing the supplied image: {image}", flush=True)
             if run(["docker", "image", "inspect", image], capture=True, check=False).returncode:
                 run(["docker", "pull", image])
+        caddy_bundle = run(
+            [
+                *compose,
+                "run",
+                "--rm",
+                "--no-deps",
+                "--entrypoint",
+                "cat",
+                "caddy",
+                "/etc/ssl/certs/ca-certificates.crt",
+            ],
+            capture=True,
+        ).stdout
+        caddy_trust = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        caddy_trust.load_verify_locations(cadata=caddy_bundle)
+        check_ca_roots(caddy_trust)
         print(
             "Validating the HTTPS Caddy configuration without requesting certificates...",
             flush=True,
