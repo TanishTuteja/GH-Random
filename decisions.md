@@ -926,3 +926,21 @@ remain with the operator, as explicitly requested. No production deployment,
 provider email or external monitoring was enabled. The remaining checklist is
 the operator handoff, not unfinished repository implementation.
 
+## 2026-10-28 — Allow the deployment puller to maintain alert state
+
+Manual v0.1.1 setup exposed a host-unit bug missed by the pull worker rehearsal:
+`ProtectSystem=strict` made `/var/lib/gh-random/alerts` read-only in the puller,
+while every completed poll invokes a recovery notifier that acquires its alert
+lock. The operator's native systemd probe confirmed alert state was read-only
+and deployment state writable; the separate failure handler successfully
+delivered email. Preserve the filesystem sandbox and grant write access only
+to the existing private alert-state directory, including for deploy/notifier
+children that inherit the puller's namespace.
+
+Fix the shipped unit and exercise the actual filesystem restrictions in native
+CI. Document an additive operator drop-in for v0.1.1 so its published archive,
+image digest and trust roots remain immutable. This host-only correction does
+not require a replacement application image. The operator continues all OCI/SSH
+work; repository validation does not certify a successful live poll, deployment
+or recovery email. Keep those acceptance items pending until confirmed.
+

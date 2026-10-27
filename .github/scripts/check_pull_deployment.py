@@ -10,9 +10,11 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
+import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,10 +25,100 @@ import pull  # noqa: E402
 from install_age import install  # noqa: E402
 
 
+def check_alert_sandbox(workspace: Path, project: str) -> None:
+    """Exercise notifier writes under the shipped puller's real filesystem policy."""
+    source = (ROOT / "deployment/systemd/gh-random-pull.service").read_text()
+    settings = dict(
+        line.split("=", 1)
+        for line in source.splitlines()
+        if line.startswith(("ProtectSystem=", "ReadWritePaths="))
+    )
+    assert settings["ProtectSystem"] == "strict"
+    directory = workspace / "pull-alert-sandbox"
+    directory.mkdir(mode=0o700)
+
+    def fixture_path(original: str) -> Path:
+        return directory / original.lstrip("/")
+
+    writable = [fixture_path(value) for value in settings["ReadWritePaths"].split()]
+    alerts = fixture_path("/var/lib/gh-random/alerts")
+    blocked = directory / "unrelated"
+    for path in [*writable, alerts, blocked]:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "deployment/notifications.py", directory / "notifications.py")
+    probe = directory / "probe.py"
+    probe.write_text(
+        textwrap.dedent(
+            f"""\
+            import errno
+            import json
+            from pathlib import Path
+            from notifications import Reporter
+
+            # A positive result must not come from disabling the read-only sandbox.
+            try:
+                Path({str(blocked / "must-stay-readonly")!r}).write_text("forbidden")
+            except OSError as error:
+                assert error.errno == errno.EROFS, error
+            else:
+                raise AssertionError("Unrelated state is writable inside the puller sandbox")
+
+            state = Path({str(alerts)!r})
+            deliveries = []
+            reporter = Reporter(
+                {{"state_dir": str(state), "repeat_after_hours": 6}},
+                sender=lambda config, issue, status, details: deliveries.append(status),
+            )
+            issue = "unit:gh-random-pull.service"
+            assert reporter.event(issue, True, {{}})
+            assert reporter.event(issue, False, {{}})
+            assert deliveries == ["failure", "recovered"]
+            assert json.loads((state / "alerts.json").read_text())["issues"] == {{}}
+            assert (state / "alerts.lock").is_file()
+            print("Puller sandbox permits alert locks and failure/recovery ledger writes.")
+            """
+        )
+    )
+    unit = project + "-pull-alert-sandbox.service"
+    try:
+        subprocess.run(
+            [
+                "sudo",
+                "systemd-run",
+                "--unit=" + unit,
+                "--wait",
+                "--pipe",
+                "--collect",
+                "--uid=" + str(os.getuid()),
+                "--gid=" + str(os.getgid()),
+                "--property=Type=exec",
+                "--property=RuntimeMaxSec=30s",
+                "--property=TimeoutStopSec=5s",
+                "--property=UMask=0077",
+                "--property=ProtectSystem=" + settings["ProtectSystem"],
+                "--property=ReadWritePaths=" + " ".join(map(str, writable)),
+                "/usr/bin/python3",
+                "-B",
+                str(probe),
+            ],
+            check=True,
+            timeout=60,
+        )
+    finally:
+        subprocess.run(
+            ["sudo", "systemctl", "stop", unit],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+
+
 def check(
     workspace: Path, release: Path, env_file: Path, state: Path, url: str, project: str
 ) -> None:
     assert os.environ.get("GITHUB_ACTIONS") == "true" and sys.platform == "linux"
+    check_alert_sandbox(workspace, project)
     original = json.loads((release / "release.json").read_text())
     assert original["platform"] == "linux/amd64"
     directory = workspace / "pull-rehearsal"
