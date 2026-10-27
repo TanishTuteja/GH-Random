@@ -48,7 +48,7 @@ def inside_seed() -> None:
                        'Python', n % 10000, 1, 0, false, false, now(), now(), now(),
                        '["rehearsal"]'::json, now() - interval '1 day',
                        now() - interval '1 day'
-                FROM generate_series(1, 50001) AS n
+                FROM generate_series(1, 55000) AS n
             """)
         )
         for number in range(1, 30):
@@ -70,12 +70,12 @@ def inside_seed() -> None:
                     SELECT :generation, n, now() - interval '1 day'
                     FROM generate_series(1, :count) AS n
                 """),
-                {"generation": generation, "count": 50001 if number == 29 else 50000},
+                {"generation": generation, "count": 55000 if number == 29 else 50000},
             )
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
         connection.exec_driver_sql("ANALYZE")
     engine.dispose()
-    print("Seeded 50,000 active repositories, 28 retained snapshots and expired history.")
+    print("Seeded 50,000 active repositories, 28 retained snapshots and 5,000 expired orphans.")
 
 
 def inside_crawl() -> None:
@@ -396,9 +396,10 @@ def check(image: str | None = None) -> None:
                         "http_max_seconds": round(max(latencies), 3),
                         "memory_events": events,
                         "active_repositories": 50000,
-                        "initial_memberships": 1450001,
+                        "initial_memberships": 1455000,
                         "crawl_combinations": 200,
                         "synthetic_repositories_refreshed": 20000,
+                        "expired_orphans_removed": 5000,
                     }
                 ),
                 flush=True,

@@ -122,5 +122,6 @@ class GenerationRepository(Base):
     github_id: Mapped[int] = mapped_column(
         ForeignKey("repositories.github_id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,
     )
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

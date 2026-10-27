@@ -884,3 +884,21 @@ would fail deployment preflight; a policy regression now checks their equality.
 Keep release files immutable and live OCI acceptance unchecked. v0.1.1 replaces
 the ARM64-only initial release with a patched AMD64 image; it does not deploy it.
 
+## 2026-10-27 — Index repository references before enabling bulk retention
+
+The generation-first membership primary key does not support repository-first
+foreign-key cleanup efficiently. A disposable PostgreSQL 17 benchmark with one
+CPU, 256 MiB and 1.4 million retained mappings measured deletion of 500 orphaned
+repositories at 19,856 ms without a repository lookup index versus 49.7 ms with
+it. Foreign-key trigger work accounted for most of that difference; the extra
+index occupied about 10.1 MiB in this fixture. This is a measured prerequisite
+for the small host, not a change to the retention policy.
+
+Add an index on generation_repositories.github_id through a new additive
+Alembic revision. Preserve the already published baseline and existing data.
+Strengthen the memory rehearsal to prune 5,000 expired-only repositories rather
+than one, while discovery/crawl/pg_dump continue under the same budget. Derive
+the deployment failure fixture's parent revision from its packaged image so
+future migrations exercise the intended failed-DDL path rather than creating
+multiple heads accidentally. Keep production data and OCI untouched.
+
