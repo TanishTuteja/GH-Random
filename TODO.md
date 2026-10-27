@@ -111,10 +111,10 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Implement three-day membership retention and cleanup of retired/failed
   generations older than seven days after successful publication, including
   orphaned repository metadata.
-- [ ] Verify and merge the repository-first membership lookup index and
-  additive migration before the AMD64 release. A populated-database benchmark
-  found repeated foreign-key scans during bulk orphan cleanup; the strengthened
-  memory fixture now includes 5,000 expired-only repositories.
+- [x] Merge and verify the repository-first membership lookup index and
+  additive migration (PR #35), preserving the published baseline. Populated
+  upgrade/downgrade/re-upgrade preserves exact data; the strengthened published-
+  image memory fixture removes 5,000 expired-only repositories without OOMs.
 - [x] Add a systemd service and persistent six-hour UTC timer for a normal crawl,
   without `--resume`, using the verified deployed digest. Document IST times,
   one catch-up after missed slots, runtime limits, and failure/next-slot behavior.
@@ -206,13 +206,14 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Add PR/`main` CI for formatting, Ruff, Pyright, and PostgreSQL-backed tests
   using disposable credentials and no production secrets/GitHub App keys.
   Include fresh-schema migration and Alembic drift checks.
-- [x] Add native ARM64 container/configuration checks to CI: image build,
+- [x] Add native container/configuration checks to CI (initially ARM64, now
+  AMD64 for the provisioned host): image build,
   production Compose/HTTPS Caddy validation, fresh-database migration/drift,
   hardened crawler status, and proxied web/API smoke tests. Use isolated test
   resources and automatic cleanup; require the `Production containers` check.
 - [x] Add a release workflow for signed semantic-version tags and GitHub
   Releases, starting with `v0.1.0`. Verify the source and passing checks, build
-  ARM64 (optionally AMD64 too), and publish to GHCR using `GITHUB_TOKEN`.
+  ARM64 for v0.1.0 and AMD64 for v0.1.1, and publish to GHCR using `GITHUB_TOKEN`.
 - [x] Implement digest/metadata/checksum and matching deployment-archive assets;
   include source/version image labels and document signed release creation and
   rollback constraints. Request BuildKit provenance and an SBOM. Smoke-test the
@@ -318,10 +319,12 @@ through authenticated APIs, as recorded above.
   Production/off-site acceptance remains separately unchecked above.
 - [x] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
   the expected ARM64 image and immutable digest.
-- [ ] Publish a new signed AMD64 release after the low-memory PR and required
-  CI checks pass. v0.1.0 is ARM64-only and cannot be used on the current VM.
-  Rehearse actual container memory use before release; finish live micro-VM
-  acceptance in [LOW_MEMORY.md](deployment/LOW_MEMORY.md) before public launch.
+- [x] Publish and independently verify signed AMD64 v0.1.1 after green PR and
+  exact-source main CI. All four assets, 46 source-matched packaged files,
+  archive/image signatures, actual provenance/SPDX, anonymous pull and real
+  App-auth/revocation passed. Published-image peak: 401.9 MiB under 768 MiB with
+  no swap/OOMs/restarts. See the evidence below and use the ordered
+  [operator handoff](deployment/FIRST_DEPLOYMENT.md); live acceptance stays manual.
 - [ ] Deploy the new AMD64 digest and matching files, back up as appropriate, migrate
   once, and start PostgreSQL/web/Caddy. Record the deployment in GitHub's
   `production` environment as part of the deployment workflow.
@@ -336,6 +339,46 @@ through authenticated APIs, as recorded above.
   enhancements in ROADMAP.md.
 - [ ] Record the actual public site URL and deployed version/container state
   after OCI setup. A published release is not evidence of a deployed website.
+
+## AMD64 release evidence — 2026-10-27
+
+- [Signed v0.1.1](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.1),
+  source `94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b`; annotated SSH tag object
+  `cfbaaf74125554549252c027ff7668d2cba36f07` verifies locally and on GitHub.
+- PRs #32–35 merged only after all required checks passed. The
+  [exact-source main CI](https://github.com/TanishTuteja/GH-Random/actions/runs/40524537930)
+  and [actual publication](https://github.com/TanishTuteja/GH-Random/actions/runs/40525960770)
+  passed. Linux CI ran 460 tests; local Windows ran 458 with two Linux-only skips.
+  Ruff and Pyright passed. The release rebuilt without Docker cache.
+- Exact published index:
+  `ghcr.io/tanishtuteja/gh-random@sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697`.
+  A complete anonymous pull using an empty Docker credential configuration
+  succeeded; actual platform/version/source labels match AMD64/v0.1.1/source.
+- Independently downloaded all four assets; verified their API digests,
+  SHA256SUMS, matching inner/outer release metadata and all 46 packaged files
+  against the signed commit's Git blobs. Verified archive and image signatures
+  with exact repository/workflow/source/signer/ref and GitHub-hosted-runner policy.
+- Independently fetched and checked the content-addressed OCI graph: SLSA v1,
+  six immutable materials, source commit match and SPDX 2.3 with 648 packages.
+  Structural inventory verification is not a vulnerability-free certification.
+- The exact published image passed packaged app/schema/trust-store checks and
+  real App token mint/use/revocation. Its private temporary key volume was removed;
+  no database/crawl work was performed by this authentication probe.
+- Exact-digest memory rehearsal: 50,000 active repositories, 1,455,000 initial
+  memberships, 200 synthetic searches, 20,000 refreshed repos and 5,000 orphan
+  deletions. Peak 401.9 MiB under a shared 768 MiB/no-swap limit; no OOMs/restarts.
+  All 86 concurrent discovery requests passed (p95 0.373 s; max 0.523 s).
+- Actual populated baseline→head→baseline→head migration preserves exact data
+  and finishes without drift. This adds an index; it does not rewrite the baseline.
+- GitHub reports zero open Dependabot alerts and zero open secret-scanning
+  alerts at acceptance. Monitoring remains disabled until operator setup.
+  v0.1.0's notes warn against deploying its old CA bundles/ARM64-only image;
+  original tags/images/assets are preserved. Routine Actions PRs remain separate
+  maintenance, not identified first-deployment blockers.
+
+Only operator-owned OCI/private configuration and live acceptance remain.
+No host, DNS, SMTP, Object Storage, live crawler or production deployment was
+configured by this repository work.
 
 ## First-release evidence — 2026-10-20
 

@@ -5,12 +5,12 @@ AMD64 E2.1.Micro, 1 GB RAM, 100 GB boot volume**. Repository CI and a published
 release do not configure OCI, send real alerts, or establish a live website.
 Complete the steps below yourself over the working Bastion connection.
 
-Target release: **v0.1.1**. Replace these placeholders only after its publication
-and independent release verification finish:
+Verified release: **v0.1.1**. Its publication and independent local verification
+completed; verify the signed tag and assets again before installing:
 
 ```text
-Signed source commit: REPLACE_WITH_VERIFIED_V0_1_1_COMMIT
-Application image: ghcr.io/tanishtuteja/gh-random@sha256:REPLACE_WITH_VERIFIED_AMD64_DIGEST
+Signed source commit: 94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b
+Application image: ghcr.io/tanishtuteja/gh-random@sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697
 ```
 
 Do not use the older ARM64-only v0.1.0 image on this VM. Do not build an image
@@ -61,8 +61,8 @@ deployment archive attached to the verified release.
    operator environment. Check
    `SHA256SUMS` and the archive's GitHub attestation against the independently
    verified signed tag's commit, version ref and release workflow. Follow the
-   [release verification procedure](../README.md#creating-a-release-not-deploying-it),
-   substituting v0.1.1 throughout. The verified metadata must say `linux/amd64`.
+   [release verification procedure](../README.md#verifying-a-published-release).
+   The verified metadata must say `linux/amd64`.
    Transfer the verified archive/files through Bastion, preserving their verified
    hashes. Keep immutable release files under `/opt/gh-random/releases/v0.1.1`;
    do not edit the packaged files. The initial verification can use your already
