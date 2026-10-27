@@ -2,9 +2,9 @@
 
 The current target is the provisioned `VM.Standard.E2.1.Micro`: AMD64, about
 952 MiB RAM and a 100 GB boot volume. This replaces the proposed Ampere host
-because A1 capacity was unavailable in Hyderabad. Published `v0.1.0` is ARM64
-only; **do not deploy that image on this host**. Wait for a newly signed AMD64
-release and its matching deployment bundle. Never rebuild or replace v0.1.0.
+because A1 capacity was unavailable in Hyderabad. Use the verified AMD64
+`v0.1.1` release and matching bundle in [FIRST_DEPLOYMENT.md](FIRST_DEPLOYMENT.md).
+Published `v0.1.0` is ARM64-only and predates the CA trust fix; do not deploy it.
 
 ## Configuration
 
@@ -51,6 +51,11 @@ snapshot (1,455,000 memberships initially). The expired snapshot also owns
 All 200 filter combinations run;
 each synthetic search returns one page, refreshing 20,000 repositories. This
 does not cover the maximum ten-page result set or a larger future catalog.
+
+The exact published v0.1.1 digest peaked at 401.9 MiB, with no OOM events/kills
+or service restarts. All 86 discovery requests passed during the synthetic
+crawl and dump (p95 0.373 seconds, maximum 0.523 seconds); 5,000 orphans were
+removed at publication. These are CI measurements, not live VM guarantees.
 
 A cgroup on a faster CI machine does not reproduce the micro VM's shared CPU,
 disk, kernel, Docker daemon, Oracle agent or real repository sizes. Synthetic

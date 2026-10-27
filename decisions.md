@@ -902,3 +902,27 @@ the deployment failure fixture's parent revision from its packaged image so
 future migrations exercise the intended failed-DDL path rather than creating
 multiple heads accidentally. Keep production data and OCI untouched.
 
+## 2026-10-27 — Verify the patched AMD64 release and finish repository work
+
+Release v0.1.1 from green main commit
+94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b. Verify the SSH tag locally and on
+GitHub, then let exact-digest container/memory, BuildKit graph and signed
+provenance checks finish before usable assets are attached. Independently
+verify all four assets, 46 signed-source files, both archive/image attestations,
+actual SLSA/SPDX graph, anonymous image retrieval, packaged schema/trust state
+and real App authentication with token revocation and private-volume cleanup.
+The published index is
+sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697.
+
+Record the published-image 401.9 MiB peak in the synthetic shared-memory test
+without presenting it as a live micro sizing guarantee. GitHub reports no open
+dependency or secret-scanning alerts at acceptance; this is not exhaustive
+vulnerability detection. Keep the old release's warning and immutable artifacts.
+Commit the evidence and filled operator handoff through a separate protected PR;
+do not rebuild or alter the verified release to change its documentation.
+
+All OCI, SSH, hostname, private GitHub App/SMTP/backup setup and live acceptance
+remain with the operator, as explicitly requested. No production deployment,
+provider email or external monitoring was enabled. The remaining checklist is
+the operator handoff, not unfinished repository implementation.
+

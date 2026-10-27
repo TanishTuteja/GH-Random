@@ -569,25 +569,31 @@ Run the initial crawler to completion before announcing the site, then replace
 the manual crawler command with the six-hour systemd timer below. Actual VM
 installation, alerts, and off-site backup setup remain separate deployment work.
 
-### Creating a release (not deploying it)
+### Current verified release
 
-The first verified release is [v0.1.0](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.0),
-from source `a312576a631ab575894e2a780ada1904844f0569`:
+Use [v0.1.1](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.1)
+for the AMD64 OCI micro, from signed source
+`94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b`:
 
 ```text
-ghcr.io/tanishtuteja/gh-random@sha256:6917abb8e53573cb7b6040060621e6044b4959165403c9402e25ff00bb465959
+ghcr.io/tanishtuteja/gh-random@sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697
 ```
 
-The [publication workflow](https://github.com/TanishTuteja/GH-Random/actions/runs/39312984113)
-passed real ARM64 smoke tests, provenance/SBOM checks and signed image/archive
-verification. All four assets, matching signed-source files and anonymous digest
-pulls were independently checked locally. This is an **ARM64 release, not a live
-website**. Configure OCI and complete the live acceptance checklist in TODO.md.
+The [publication workflow](https://github.com/TanishTuteja/GH-Random/actions/runs/40525960770)
+passed exact-digest container, migration, backup/recovery and memory rehearsals,
+then signed and verified both image and archive provenance. Independent local
+acceptance checked all four assets, all 46 packaged files against signed Git
+source, both signatures, actual provenance/SPDX metadata, an anonymous AMD64
+pull and real App authentication/token revocation. The published image peaked
+at 401.9 MiB in the shared 768 MiB/no-swap synthetic rehearsal, with no OOM kills
+or restarts. Live micro CPU, DNS/TLS, backups and email still require acceptance.
 
 Do not deploy v0.1.0: it predates the
 [CA trust security fix](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)
 and is ARM64-only. Use the new verified AMD64 release and the ordered
 [first-deployment guide](deployment/FIRST_DEPLOYMENT.md) for the OCI micro.
+
+### Creating a release (not deploying it)
 
 Merging a PR does not publish an image or change production. When a release
 candidate is ready, first merge it into `main` and wait for all three **main-push**
@@ -595,8 +601,8 @@ CI jobs to pass. PR checks alone do not qualify the merge commit for release.
 Keep `project.version` in `pyproject.toml` aligned with the intended stable tag;
 version changes also need `uv lock` and the ordinary PR process.
 
-The next AMD64 release must use a new version (for example `v0.1.1`) after its
-version-bump PR is merged. v0.1.0 is already published and remains ARM64-only.
+The next release must use an unused version (for example `v0.1.2`) after its
+version-bump PR is merged. v0.1.1 is already published; do not repeat its tag.
 After aligning the package version/lockfile, use an up-to-date, clean local
 `main` to create an annotated, signed tag:
 
@@ -604,20 +610,20 @@ After aligning the package version/lockfile, use an up-to-date, clean local
 git switch main
 git pull --ff-only
 git status --short
-git tag -s v0.1.1 -m "GH Random v0.1.1"
-git push origin v0.1.1
+git tag -s v0.1.2 -m "GH Random v0.1.2"
+git push origin v0.1.2
 ~~~
 
 `git tag -s` uses the configured SSH signing key, just like our signed commits.
 The signing public key must be registered on GitHub and the tag must show
-**Verified** there. Local `git verify-tag v0.1.1` additionally requires an
+**Verified** there. Local `git verify-tag v0.1.2` additionally requires an
 appropriate SSH allowed-signers file; a missing local trust file does not mean
 GitHub rejected the signature. Never create the tag through the release UI,
 which would bypass this signing step. The active release-tag ruleset blocks
 updates/deletion of `v*` with no bypass actors (verified on 2026-10-18).
 Fixes require a new version; never move or replace a published release tag.
 
-In GitHub → Releases → Draft a new release, select the **existing** `v0.1.1`
+In GitHub → Releases → Draft a new release, select the **existing** `v0.1.2`
 tag, write release notes, leave prerelease unchecked, and publish. The `Release`
 workflow then:
 
@@ -627,7 +633,7 @@ workflow then:
    containers` in the latest main-push CI run for that exact commit. A pending,
    cancelled, failed, or skipped required check stops publishing.
 3. Builds `linux/amd64` on a native AMD64 runner and publishes
-   `ghcr.io/tanishtuteja/gh-random:v0.1.1` using the temporary `GITHUB_TOKEN`.
+   `ghcr.io/tanishtuteja/gh-random:v0.1.2` using the temporary `GITHUB_TOKEN`.
    It adds source/revision/version/license labels and BuildKit provenance/SBOM.
    New releases target the provisioned OCI E2 micro. The existing v0.1.0
    release remains ARM64-only and must not be deployed on this AMD64 host.
@@ -638,7 +644,7 @@ workflow then:
    provenance using GitHub's OIDC identity. See the
    [supply-chain verification policy](.github/SUPPLY_CHAIN.md) for checks and limits.
 5. Attaches `image-digest.txt`, `release.json`, `SHA256SUMS`, and
-   `gh-random-v0.1.1-deployment.tar.gz` only after successful smoke tests.
+   `gh-random-v0.1.2-deployment.tar.gz` only after successful smoke tests.
    The archive contains matching Compose/Caddy files, safe configuration
    templates, deploy/backup scripts, README/license, and release metadata.
    Metadata includes SHA-256 hashes for every packaged deployment file.
@@ -665,7 +671,9 @@ deploying. Do not copy the Actions token onto the VM. Publishing uses GitHub's
 2026-10-20. Recheck access when changing package ownership or publishing a new
 package; do not assume a future package inherits that setting.
 
-On the Linux VM, download these four release assets into a new version-specific
+### Verifying a published release
+
+On the Linux VM, download the four v0.1.1 assets into a new version-specific
 directory. Verify before extracting (checksums detect corruption, not a malicious
 replacement of both assets and checksums). Replace `VERIFIED_COMMIT` below with
 the independently verified signed tag's full commit SHA, not an untrusted value
