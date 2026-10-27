@@ -117,10 +117,10 @@ deployment/notifications.py
 Verify archive attestation **before** extracting or executing it, e.g.:
 
 ```bash
-gh attestation verify gh-random-v0.1.0-deployment.tar.gz \
+gh attestation verify gh-random-v0.1.1-deployment.tar.gz \
   --repo TanishTuteja/GH-Random \
   --signer-workflow TanishTuteja/GH-Random/.github/workflows/release.yaml \
-  --source-ref refs/tags/v0.1.0 --source-digest VERIFIED_COMMIT \
+  --source-ref refs/tags/v0.1.1 --source-digest VERIFIED_COMMIT \
   --signer-digest VERIFIED_COMMIT --deny-self-hosted-runners
 ```
 

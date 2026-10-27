@@ -4,7 +4,7 @@ This is a Linux host runbook, not evidence of a live deployment. Use a private
 Bastion session. Commands assume the documented `/etc/gh-random`,
 `/var/lib/gh-random/deployments` and `/opt/gh-random/releases` paths and Compose
 project `gh-random`. Substitute the **verified current release directory** for
-`/opt/gh-random/releases/v0.1.0`; do not use a checkout of moving `main`.
+`/opt/gh-random/releases/v0.1.1`; do not use a checkout of moving `main`.
 Never paste secrets, raw environment files, database URLs or unreviewed logs into
 an issue or alert. Docker/root access is equivalent to administrative host access.
 
@@ -19,9 +19,9 @@ the latest attempt journal and the actual container images too.
 sudo systemctl list-timers 'gh-random-*'
 sudo systemctl status gh-random-crawler.service gh-random-backup.service gh-random-monitor.service
 sudo journalctl -u gh-random-crawler.service -u gh-random-backup.service --since today --no-pager
-sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.0/compose.production.yaml ps
-sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.0/compose.production.yaml logs --tail 100 web database caddy
-sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.0/compose.production.yaml --profile crawler run --rm crawler python -m app.cli status
+sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.1/compose.production.yaml ps
+sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.1/compose.production.yaml logs --tail 100 web database caddy
+sudo docker compose --project-name gh-random --env-file /etc/gh-random/compose.env -f /opt/gh-random/releases/v0.1.1/compose.production.yaml --profile crawler run --rm crawler python -m app.cli status
 df -h / /var/lib/docker /var/backups/gh-random
 df -i / /var/lib/docker /var/backups/gh-random
 sudo docker system df

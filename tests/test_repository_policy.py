@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tomllib
@@ -132,6 +133,14 @@ def test_runtime_and_shared_service_pins_agree():
             "update-types": ["version-update:semver-major"],
         }
     ]
+
+
+def test_deployment_and_scheduled_backup_templates_share_the_archive_directory():
+    # deploy.py refuses mismatched directories before any mutation. Copying our
+    # production templates must produce a consistent encrypted backup policy.
+    pull = json.loads((ROOT / "deployment/pull.json.example").read_text())
+    backup = json.loads((ROOT / "deployment/backup.json.example").read_text())
+    assert pull["backup_dir"] == backup["archive_dir"]
 
 
 @pytest.mark.parametrize("changed", ["Dockerfile", "ci", "caddy", "uv"])

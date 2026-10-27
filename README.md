@@ -584,6 +584,11 @@ verification. All four assets, matching signed-source files and anonymous digest
 pulls were independently checked locally. This is an **ARM64 release, not a live
 website**. Configure OCI and complete the live acceptance checklist in TODO.md.
 
+Do not deploy v0.1.0: it predates the
+[CA trust security fix](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)
+and is ARM64-only. Use the new verified AMD64 release and the ordered
+[first-deployment guide](deployment/FIRST_DEPLOYMENT.md) for the OCI micro.
+
 Merging a PR does not publish an image or change production. When a release
 candidate is ready, first merge it into `main` and wait for all three **main-push**
 CI jobs to pass. PR checks alone do not qualify the merge commit for release.
@@ -670,8 +675,8 @@ automation guide for its required policy options:
 
 ~~~sh
 sha256sum --check SHA256SUMS
-gh attestation verify gh-random-v0.1.0-deployment.tar.gz --repo TanishTuteja/GH-Random --signer-workflow TanishTuteja/GH-Random/.github/workflows/release.yaml --source-ref refs/tags/v0.1.0 --source-digest VERIFIED_COMMIT --signer-digest VERIFIED_COMMIT --deny-self-hosted-runners
-tar -xzf gh-random-v0.1.0-deployment.tar.gz
+gh attestation verify gh-random-v0.1.1-deployment.tar.gz --repo TanishTuteja/GH-Random --signer-workflow TanishTuteja/GH-Random/.github/workflows/release.yaml --source-ref refs/tags/v0.1.1 --source-digest VERIFIED_COMMIT --signer-digest VERIFIED_COMMIT --deny-self-hosted-runners
+tar -xzf gh-random-v0.1.1-deployment.tar.gz
 cat image-digest.txt
 cat release.json
 ~~~
@@ -700,7 +705,7 @@ The manual path below needs Python 3.12+, Docker Engine, and Docker Compose. No 
 PostgreSQL client, or Docker socket mounted into application containers is needed.
 Use a trusted release's script, not one downloaded separately from moving `main`.
 Keep each extracted release at a stable, version-specific absolute path, for
-example `/opt/gh-random/releases/v0.1.0`. Retain previous directories/images for
+example `/opt/gh-random/releases/v0.1.1`. Retain previous directories/images for
 rollback; do not edit packaged files. The script checks their manifest hashes,
 image digest, source/revision/version labels, Linux architecture, configuration
 paths, database credentials, and Caddy configuration before migrations.
@@ -719,10 +724,10 @@ First deployment, after configuring DNS/firewalls, private env files, and the
 SMTP configuration described under email alerts below:
 
 ~~~sh
-sudo python3 /opt/gh-random/releases/v0.1.0/deployment/deploy.py apply \
+sudo python3 /opt/gh-random/releases/v0.1.1/deployment/deploy.py apply \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
-  --backup-dir /var/backups/gh-random \
+  --backup-dir /var/backups/gh-random/encrypted \
   --backup-config /etc/gh-random/backup.json \
   --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \
@@ -800,7 +805,7 @@ release's files and image. Review compatibility, then run:
 sudo python3 /opt/gh-random/releases/v0.1.1/deployment/deploy.py rollback \
   --env-file /etc/gh-random/compose.env \
   --state-dir /var/lib/gh-random/deployments \
-  --backup-dir /var/backups/gh-random \
+  --backup-dir /var/backups/gh-random/encrypted \
   --backup-config /etc/gh-random/backup.json \
   --alerts-config /etc/gh-random/alerts.json \
   --url https://YOUR_HOSTNAME \

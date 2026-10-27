@@ -1,8 +1,9 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-20. `[x]` means implemented and
-locally verified; `[ ]` means work remains. Local checks do not establish that
-something works in production. OCI resources have not been verified. The public
+Reviewed against the repository on 2026-10-27. `[x]` means implemented and
+verified locally or in CI; `[ ]` means work remains. Those checks do not establish
+that something works in production. OCI state is operator-reported, without
+remote inspection by the agent. The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
 GitHub settings remain pending unless explicitly marked complete.
 
@@ -20,6 +21,16 @@ VM steps; do not attempt remote access or live deployment.
 ## Repository implementation
 
 ### 1. Production image
+
+- [x] Retarget future releases and native container CI to the provisioned AMD64
+  micro (PR #32). Preserve the ARM64-only v0.1.0 assets. Test a shared 768 MiB
+  no-swap budget with 50,000 active repos and 1.45 million retained memberships:
+  initial peak 401.8 MiB, no OOM kills/restarts, all 200 synthetic queries passed.
+  Live micro CPU/capacity acceptance remains the operator's task.
+- [x] Resolve the pre-release CA trust incident (PR #33): certifi 2026.10.23,
+  uv 0.13.5, Python 3.12.16, patched Caddy CA store, unused pip/ensurepip removal,
+  real trust-store checks and no-cache release builds. Recheck repository alerts
+  before publication; the old release notes now warn against deploying it.
 
 - [x] Add `Dockerfile` for web, crawler, and migrations. Build and run AMD64 and
   ARM64 images locally. The image defaults to non-root; Compose overrides the
