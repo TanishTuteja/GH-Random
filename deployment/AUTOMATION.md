@@ -167,6 +167,19 @@ dispatching the first deployment. Keep the override until a future reviewed
 unit installation includes this path; no replacement image is needed solely
 for this host-unit correction.
 
+The v0.1.1 bootstrap's `deployment/github_api.py` also sends the release-asset
+media type for Actions artifact ZIP downloads, which GitHub rejects with HTTP
+415. Actions artifact downloads must use `application/vnd.github+json`; binary
+release-asset downloads still require `application/octet-stream`. Upgrade only
+the installed `/opt/gh-random-automation/deployment/github_api.py` from a reviewed,
+verified signed fix commit, checking its expected SHA-256 before installation.
+Do not alter the immutable v0.1.1 release directory or image, change App
+permissions, or bypass artifact digest/source/approval verification. Keep the
+timer stopped for the upgrade and test authenticated downloads of both the
+approval ZIP and release archive before submitting a fresh deployment request.
+Requests expire after 30 minutes; never extend that window to revive an old
+approval.
+
 ## Deploy, observe, recover
 
 Dispatch `Production deployment` on **main** with the published version, review

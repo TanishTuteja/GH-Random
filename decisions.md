@@ -944,3 +944,21 @@ not require a replacement application image. The operator continues all OCI/SSH
 work; repository validation does not certify a successful live poll, deployment
 or recovery email. Keep those acceptance items pending until confirmed.
 
+## 2026-10-28 — Negotiate Actions artifact and release asset downloads separately
+
+The first real approved deployment reached the Actions artifact ZIP endpoint
+and received HTTP 415. The host client selected `application/octet-stream` for
+every binary response, but GitHub's Actions API requires the usual
+`application/vnd.github+json` negotiation before redirecting to ZIP bytes.
+Only binary release assets should request `application/octet-stream`, which
+selects content rather than asset metadata. Preserve download bounds, trusted
+redirect validation, credential stripping and approval/digest/source checks.
+
+Add transport tests that reject incorrect media types with 415 for actual ZIP
+responses, including query-bearing endpoints and both redirect families. The
+operator upgrades only the separately installed bootstrap client from a
+verified signed fix commit, with an independently supplied file checksum; the
+published v0.1.1 archive/image stay immutable and App permissions stay unchanged.
+Verify both real authenticated download paths before a fresh approval. Do not
+weaken request expiry to keep an earlier queue request alive during diagnosis.
+

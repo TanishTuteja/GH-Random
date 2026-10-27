@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import zipfile
 from datetime import datetime, timedelta, timezone
 from email.message import Message
 from pathlib import Path
@@ -51,32 +52,60 @@ def test_private_token_file_revalidated_each_use(api_tools, tmp_path):
         credential.token()
 
 
-def test_asset_redirect_drops_api_credential(api_tools, monkeypatch):
+@pytest.mark.parametrize(
+    ("path", "media_type"),
+    [
+        ("/repos/Owner/Repo/actions/artifacts/5/zip", "application/vnd.github+json"),
+        (
+            "/repos/Owner/Repo/actions/artifacts/5/zip?download=1",
+            "application/vnd.github+json",
+        ),
+        ("/repos/Owner/Repo/releases/assets/1", "application/octet-stream"),
+        ("/repos/Owner/Repo/releases/assets/1?name=fixture.zip", "application/octet-stream"),
+    ],
+)
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://release-assets.githubusercontent.com/test?signed=yes",
+        "https://fixture.blob.core.windows.net/test?signed=yes",
+    ],
+)
+def test_download_media_type_and_redirect_drop_api_credential(
+    api_tools, monkeypatch, path, media_type, location
+):
     requests = []
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("request.json", '{"deployment_id": 42}')
+    expected = archive.getvalue()
 
     class Opener:
         def open(self, request, timeout):
             requests.append(request)
             assert timeout == 30
             if len(requests) == 1:
+                # Match GitHub's content negotiation: an unsupported media type
+                # is rejected before the server returns the download redirect.
+                if request.get_header("Accept") != media_type:
+                    raise HTTPError(request.full_url, 415, "", headers(), None)
                 raise HTTPError(
                     request.full_url,
                     302,
                     "",
-                    headers(
-                        Location="https://release-assets.githubusercontent.com/test?signed=yes"
-                    ),
+                    headers(Location=location),
                     None,
                 )
-            return io.BytesIO(b"archive")
+            return io.BytesIO(expected)
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
-    assert (
-        api_tools._request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
-        == b"archive"
-    )
+    actual = api_tools._request(path, "secret", binary=True)
+    assert actual == expected
+    with zipfile.ZipFile(io.BytesIO(actual)) as package:
+        assert json.loads(package.read("request.json")) == {"deployment_id": 42}
     assert requests[0].get_header("Authorization") == "Bearer secret"
     assert requests[1].get_header("Authorization") is None
+    assert len(requests) == 2
 
 
 @pytest.mark.parametrize(
@@ -88,14 +117,18 @@ def test_asset_redirect_drops_api_credential(api_tools, monkeypatch):
         "https://user:password@release-assets.githubusercontent.com/x",
     ],
 )
-def test_untrusted_asset_redirect_rejected(api_tools, monkeypatch, location):
+@pytest.mark.parametrize(
+    "path",
+    ["/repos/Owner/Repo/actions/artifacts/5/zip", "/repos/Owner/Repo/releases/assets/1"],
+)
+def test_untrusted_asset_redirect_rejected(api_tools, monkeypatch, location, path):
     class Opener:
         def open(self, request, timeout):
             raise HTTPError(request.full_url, 302, "", headers(Location=location), None)
 
     monkeypatch.setattr(api_tools, "build_opener", lambda *args: Opener())
     with pytest.raises(api_tools.GitHubError, match="Untrusted"):
-        api_tools._request("/repos/Owner/Repo/releases/assets/1", "secret", binary=True)
+        api_tools._request(path, "secret", binary=True)
 
 
 def test_json_writes_are_bounded_and_errors_redacted(api_tools, monkeypatch):
