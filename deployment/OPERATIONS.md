@@ -1,7 +1,8 @@
 # Production operations
 
-This is a Linux host runbook, not evidence of a live deployment. Use a private
-Bastion session. Commands assume the documented `/etc/gh-random`,
+This Linux host runbook describes operator procedures; the
+[dated acceptance record](#live-acceptance--2026-10-28) records verified live checks.
+Use a private Bastion session. Commands assume the documented `/etc/gh-random`,
 `/var/lib/gh-random/deployments` and `/opt/gh-random/releases` paths and Compose
 project `gh-random`. Substitute the **verified current release directory** for
 `/opt/gh-random/releases/v0.1.1`; do not use a checkout of moving `main`.
@@ -243,3 +244,66 @@ and recovery measurements. Record identifiers/results, not passwords or keys.
 Public launch requires real HTTPS, active discovery catalog, timely crawl/backup
 success, independent downtime alerts and a verified recovery path. Repository CI
 cannot establish any of those live-account conditions.
+
+## Live acceptance — 2026-10-28
+
+The operator performed OCI/SSH/private configuration work personally and supplied
+the host results below. GitHub metadata and public HTTP/API checks were verified
+independently. The recovery rehearsal used the operator's separate Windows host;
+it did not connect to or overwrite the production database. No credentials,
+email addresses, private key contents or private key paths belong in this record.
+
+- **Release and deployment:** [v0.1.1](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.1),
+  source `94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b`, AMD64 image
+  `ghcr.io/tanishtuteja/gh-random@sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697`.
+  [Production workflow](https://github.com/TanishTuteja/GH-Random/actions/runs/40596008134)
+  and deployment `7372126619` succeeded. Bootstrap authorization was disabled
+  afterward. Operator-applied puller sandbox, artifact-media and attestation
+  runtime fixes from PRs #37–39 preserve the signed release archive/image.
+- **Public service:** https://ghrandom.duckdns.org returns verified HTTPS 200,
+  HTTP redirects to its canonical HTTPS origin with 308, and the public API
+  returns actual catalog results. Any/Python filtering and exclusion of the
+  currently displayed repository passed direct public API checks. Certificate
+  renewal, forwarded-client-address and full port isolation remain separate.
+- **First managed crawl:** 2026-10-27 22:45:51 to 2026-10-28 00:54:19 UTC
+  (2026-10-28 04:15:51–06:24:19 IST), 200/200 combinations, 62,459 staged
+  repositories and `succeeded cleanup=True`. The enabled timer's next slot was
+  confirmed at 06:00 UTC/11:30 IST. Scheduled sort rotation and interrupted-run
+  recovery have not yet been exercised on this host.
+- **Catalog backup:** 2026-10-28 04:30:22–04:31:08 UTC, encrypted upload and
+  complete off-site SHA-256 read-back succeeded. The daily 05:15 UTC/10:45 IST
+  timer and 36-hour backup freshness checks were enabled afterward. Local
+  retention is seven days/minimum two verified copies; remote deletion is off.
+- **Independent restore:** the exact off-site archive's SHA-256 was
+  `6014267aedfe205350027853fa811262ce3618200eddae084d0f07319b4a332b`.
+  Windows download, age authentication and inner dump checksum verification
+  passed. An isolated PostgreSQL 17 container restored schema `20261027_01`,
+  62,459 repositories, one generation, 62,459 memberships/active memberships
+  and zero running crawls. The exact released image passed homepage, discovery,
+  immediate-repeat avoidance and Python filtering checks against the restored
+  database. The temporary container/anonymous database volume were removed;
+  encrypted backup and offline identity were preserved. This proves database/app
+  recovery, not a rebuilt OCI VM or a measured full recovery-time target.
+- **Local monitoring:** the operator confirmed successful completed disk/TLS/
+  freshness checks and telemetry publication. The hourly monitor and publisher
+  timers are enabled. Puller failure/recovery email receipt was also confirmed.
+- **Independent monitoring:** telemetry anchor `7372452460` is authored by the
+  expected deployment App bot `349016861`; host/crawl/backup watermarks match
+  proven success. Protected `monitoring` secrets and branch restrictions were
+  read back without exposing values. The
+  [healthy baseline](https://github.com/TanishTuteja/GH-Random/actions/runs/40634684303),
+  [controlled failure](https://github.com/TanishTuteja/GH-Random/actions/runs/40634818327)
+  and [recovery](https://github.com/TanishTuteja/GH-Random/actions/runs/40634860298)
+  exercised the real GitHub/SMTP/issue-ledger path. Only the monitor origin was
+  temporarily set to a reserved invalid hostname; the production site stayed
+  online. The operator confirmed both emails arrived before enabling the schedule.
+  `MONITORING_ORIGIN` was restored to the real site, issue #26 has no active or
+  pending incident, and the
+  [enabled real-site check](https://github.com/TanishTuteja/GH-Random/actions/runs/40635039621)
+  passed. This does not establish actual VM-loss or stale-watermark handling.
+
+Still required: a second independent offline recovery-key copy (the operator
+confirmed only one exists), actual scheduled runs/rotation, full-crawl resource
+peaks and retention growth, reboot/renewal/port checks, separate staleness and
+SMTP-retry inbox tests, and replacement-host configuration/DNS/credential
+recovery. Keep the specific pending items in [TODO.md](../TODO.md) open.
