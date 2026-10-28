@@ -13,17 +13,26 @@ The production Compose defaults and `compose.env.example` now use:
 | Service | Memory ceiling | Notes |
 | --- | --- | --- |
 | PostgreSQL | 256 MiB | 64 MB shared buffers, 32 connections |
-| Web | 128 MiB | One Uvicorn worker |
+| Web | 192 MiB | One Uvicorn worker |
 | Crawler | 192 MiB | One scheduled crawl; five-second GitHub pacing |
 | Migration | 128 MiB | One-shot process under the deployment lock |
 | Caddy | 64 MiB | Public proxy; no pgAdmin on this small host |
 
 These are hard limits, not reserved RAM. The normal web/database/proxy/crawler
-ceilings total 640 MiB; deployment and crawler coordinators also consume host
+ceilings total 704 MiB; deployment and crawler coordinators also consume host
 memory outside these containers. Migrations and managed crawls do not overlap.
 The backup lock serializes managed database backups against crawls/deployments;
 public requests continue. Do not build images on this VM or run development
 tools, parallel restores, pgAdmin, or extra web workers here.
+
+Live acceptance recorded a kernel OOM kill of Uvicorn at the earlier 128 MiB
+web ceiling on 2026-10-28 at 19:22:35 UTC. The container restarted once; the host
+had 359 MiB available during the active-crawl inspection. Raise the single web
+worker's ceiling to 192 MiB while retaining the other service limits and the
+shared 768 MiB rehearsal budget. This does not establish multi-day capacity.
+For an existing verified `v0.1.1` bundle, set `WEB_MEMORY=192m` in the private
+Compose env file and deliberately recreate only the web container to apply it.
+Published release bundles and image digests remain immutable.
 
 `WEB_WORKERS` and the existing `*_MEMORY`/`*_CPUS` settings live in the private
 Compose env file. PostgreSQL tuning is configurable there through
@@ -52,10 +61,11 @@ All 200 filter combinations run;
 each synthetic search returns one page, refreshing 20,000 repositories. This
 does not cover the maximum ten-page result set or a larger future catalog.
 
-The exact published v0.1.1 digest peaked at 401.9 MiB, with no OOM events/kills
-or service restarts. All 86 discovery requests passed during the synthetic
-crawl and dump (p95 0.373 seconds, maximum 0.523 seconds); 5,000 orphans were
-removed at publication. These are CI measurements, not live VM guarantees.
+The exact published v0.1.1 digest, rehearsed with the earlier 128 MiB web ceiling,
+peaked at 401.9 MiB, with no OOM events/kills or service restarts. All 86 discovery
+requests passed during the synthetic crawl and dump (p95 0.373 seconds, maximum
+0.523 seconds); 5,000 orphans were removed at publication. These are CI
+measurements, not live VM guarantees.
 
 A cgroup on a faster CI machine does not reproduce the micro VM's shared CPU,
 disk, kernel, Docker daemon, Oracle agent or real repository sizes. Synthetic

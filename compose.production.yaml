@@ -76,7 +76,7 @@ services:
   web:
     <<: *app-service
     cpus: ${WEB_CPUS:-1.0}
-    mem_limit: ${WEB_MEMORY:-128m}
+    mem_limit: ${WEB_MEMORY:-192m}
     pids_limit: 128
     env_file:
       - ${GH_RANDOM_APP_ENV_FILE:?Set GH_RANDOM_APP_ENV_FILE to an absolute path.}
