@@ -1008,3 +1008,18 @@ staleness/retry delivery, resource growth and replacement-VM recovery unchecked
 until separately verified. The operator retains all OCI/SSH/private setup work;
 the agent did not access the VM, and full recovery time has not been measured.
 
+## 2026-10-28 — Give the web worker measured container headroom
+
+Live acceptance found a kernel OOM kill of Uvicorn at 19:22:35 UTC under the
+128 MiB web ceiling, followed by one automatic restart. The 952 MiB no-swap
+host had 359 MiB available during the active-crawl inspection. Raise only the
+web ceiling to 192 MiB in the production Compose fallback and env template.
+The normal web/database/Caddy/crawler ceilings now total 704 MiB; retain the
+shared 768 MiB no-swap CI rehearsal and one web worker. The earlier synthetic
+rehearsal did not establish this live request workload's per-container fit.
+
+Apply the private VM setting by recreating only web from the same verified
+v0.1.1 digest. Preserve the database, active crawler, application code, version,
+tags and published release artifacts. Continue observing live memory and OOM
+counters before claiming sustained capacity.
+
