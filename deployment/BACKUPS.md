@@ -5,6 +5,10 @@ age encryption. It does not create OCI resources, grant IAM permissions, enable
 timers, generate production recovery keys, or certify live off-site recovery.
 Those remain deployment acceptance tasks for the operator.
 
+The first production catalog backup and independent off-site database/app
+restore passed on 2026-10-28; see the [acceptance record](OPERATIONS.md#live-acceptance--2026-10-28).
+Replacement-VM recovery and a second independent offline key copy remain open.
+
 ## Policy and trust
 
 - Daily at **05:15 UTC / 10:45 IST**, between the 00:00 and 06:00 crawler slots.

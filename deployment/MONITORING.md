@@ -6,9 +6,11 @@ and missing **successful** crawls/backups. It requires no paid monitoring servic
 and adds no public application endpoint. The existing `/` and
 `/api/random-repository` remain the only routes.
 
-This implementation is fixture-tested, not an already-configured live service.
-Leave `MONITORING_ENABLED` unset until the real hostname, telemetry identity,
-SMTP credentials and inbox delivery have been verified. Enabling it with missing
+The first live setup and failure/recovery inbox test passed on 2026-10-28;
+the external schedule is enabled. See the [acceptance record](OPERATIONS.md#live-acceptance--2026-10-28)
+for evidence and remaining outage/staleness checks. For a new installation,
+keep `MONITORING_ENABLED=false` until the hostname, telemetry identity, SMTP
+credentials and inbox delivery are verified. Enabling it with missing
 configuration fails the workflow; it never silently reports a healthy site.
 
 ## What is checked
@@ -140,7 +142,10 @@ Set these **repository variables** under Settings → Secrets and variables → 
 
 This repository already has the permanent state [issue #26](https://github.com/TanishTuteja/GH-Random/issues/26)
 and `MONITORING_ISSUE_NUMBER=26`. Reuse it rather than creating another ledger.
-`MONITORING_ENABLED=false` is explicit; real monitoring is not yet enabled.
+`MONITORING_ENABLED=true` now enables its accepted live setup. Start a new
+installation with the switch false; enable temporarily for controlled acceptance
+runs, restore the real origin, and pause the schedule until inbox receipt is
+confirmed. Never use an injected failure as evidence of an actual VM outage.
 
 | Variable | Value |
 | --- | --- |

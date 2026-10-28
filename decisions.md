@@ -987,3 +987,24 @@ the pre-claim candidate directory for diagnosis. Retire the unclaimed stalled
 request and require a fresh approval rather than relaxing expiry or replaying
 deployment state. End-to-end live deployment acceptance remains pending.
 
+## 2026-10-28 — Record live deployment and independent recovery evidence
+
+The operator completed the first v0.1.1 production deployment, full crawl and
+encrypted catalog backup on the AMD64 micro. Verify public HTTPS/API results
+independently and restore the actual off-site archive on a separate Windows host
+using PostgreSQL 17 and the exact released application digest. Schema, all 62,459
+active memberships and application discovery passed. Preserve the immutable
+release and keep host-only compatibility fixes distinct from image changes.
+
+Enable external monitoring only after real GitHub-hosted healthy checks and
+operator-confirmed failure/recovery inbox delivery. A temporary reserved invalid
+monitor origin exercised the email/issue path while the production site stayed
+online; restore the real origin and clear the incident before enabling scheduled
+checks. Record this as controlled probe failure, not an actual VM/network outage.
+
+Track evidence and its limits in deployment/OPERATIONS.md and TODO.md. Keep a
+second independent offline recovery-key copy, reboot/renewal, scheduled rotation,
+staleness/retry delivery, resource growth and replacement-VM recovery unchecked
+until separately verified. The operator retains all OCI/SSH/private setup work;
+the agent did not access the VM, and full recovery time has not been measured.
+

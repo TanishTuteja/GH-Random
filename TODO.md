@@ -1,22 +1,19 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository on 2026-10-27. `[x]` means implemented and
-verified locally or in CI; `[ ]` means work remains. Those checks do not establish
-that something works in production. OCI state is operator-reported, without
-remote inspection by the agent. The public
+Reviewed against the repository and deployment evidence on 2026-10-28. `[x]`
+means verified at the scope stated in that item; `[ ]` means work remains.
+Local/CI checks alone do not establish production behavior. OCI host state is
+operator-reported, without remote inspection by the agent. Public HTTPS,
+GitHub deployment/monitoring results and the local off-site restore were checked
+independently; see the [live acceptance record](deployment/OPERATIONS.md#live-acceptance--2026-10-28). The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
 GitHub settings remain pending unless explicitly marked complete.
 
-Current execution scope: complete every non-OCI item. OCI provisioning, private
-VM configuration and acceptance that requires the live OCI stack remain manual
-and unchecked. GitHub administration/releases and repository implementation are
-still in scope; they must not be treated as OCI prerequisites to avoid doing them.
-On 2026-10-20 the operator explicitly chose to configure and test Gmail alerts
-alongside OCI setup. That private account/credential and inbox-acceptance work
-remains manual and unchecked; monitoring stays disabled until acceptance.
-On 2026-10-27 the operator confirmed all OCI work, SSH and hostname setup will
-be done personally. Finish repository/release work, then hand off the remaining
-VM steps; do not attempt remote access or live deployment.
+The operator retains all OCI, SSH, hostname and private configuration work.
+The first production deployment, full crawl, encrypted catalog backup, separate
+Windows restore and email acceptance are complete. External monitoring is now
+enabled. Keep unverified operational checks below open; do not infer them from
+the first successful run or attempt remote VM access.
 
 ## Repository implementation
 
@@ -55,7 +52,8 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Keep migration/crawl startup explicit and share the application image
   setting across roles. Restarting web does not start a crawl.
 - [x] Add role-specific `deployment/*.env.example` templates. Mount the private
-  key read-only only into the crawler. Actual VM secrets still need setup.
+  key read-only only into the crawler. The operator confirmed private VM files
+  and their ownership/permissions during setup.
 - [x] Smoke-test an empty disposable production database, baseline migration,
   and packaged web response (HTTP 200); remove that test stack.
 - [x] Add optional production pgAdmin bound to `127.0.0.1`, separate opt-in
@@ -69,8 +67,10 @@ VM steps; do not attempt remote access or live deployment.
 
 - [x] Add and validate `Caddyfile` for HTTPS, reverse proxying, compression, and
   basic response headers.
-- [ ] Verify live DNS, certificate issuance/renewal, HTTP-to-HTTPS redirects, and
-  the real hostname on the VM; these were not covered by local validation.
+- [x] Verify live DNS, valid HTTPS and the real hostname, plus the canonical
+  HTTP-to-HTTPS 308 redirect at https://ghrandom.duckdns.org.
+- [ ] Observe certificate renewal and verify the real forwarded client address
+  on the VM; initial certificate issuance does not establish renewal.
 - [x] Add exact-host allowlisting and explicit private-network proxy trust;
   test spoofed forwarded headers and canonical redirect schemes through Caddy.
   Verify the real HTTPS scheme/client address again on the VM before launch.
@@ -100,7 +100,7 @@ VM steps; do not attempt remote access or live deployment.
   Preserve database volumes during normal redeployment.
 - [x] Test real scripted bootstrap/redeploy, migration failure, smoke failure,
   controller EOF/idle cleanup, exclusion, and rollback using disposable data.
-  Keep live production acceptance separate; no production deployment performed.
+  Keep these disposable failure rehearsals separate from live acceptance.
 
 ### 5. Scheduled crawler and crash recovery
 
@@ -118,8 +118,10 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Add a systemd service and persistent six-hour UTC timer for a normal crawl,
   without `--resume`, using the verified deployed digest. Document IST times,
   one catch-up after missed slots, runtime limits, and failure/next-slot behavior.
-- [ ] Install/enable the units on the production VM, verify real schedule and
-  catch-up after reboot, and measure crawl duration against the five-hour limit.
+- [x] Install/enable the production crawler units and verify the six-hour UTC
+  schedule. The first managed crawl completed in 2 h 8 min with cleanup confirmed.
+- [ ] Verify a scheduled second run/sort rotation and catch-up after reboot;
+  measure full-crawl resource peaks and longer-term runtime headroom.
 - [x] Add database-scoped session ownership for all manual/scheduled CrawlService
   calls and online Alembic operations. Contenders fail promptly; every statement
   and commit is fenced to the original owning connection, including after a
@@ -136,13 +138,14 @@ VM steps; do not attempt remote access or live deployment.
   in CI without real GitHub traffic or permanent service installation.
 - [x] Implement crawler failure/timeout systemd email hooks and an hourly
   missing-success monitor with durable retries, cooldowns and recovery notices.
-- [ ] Configure SMTP and verify real failure/recovery/staleness emails on the VM;
+- [x] Configure VM SMTP and confirm real puller failure/recovery emails arrived.
+- [ ] Verify crawl/backup staleness emails and interrupted-run recovery on the VM;
   Docker outages may require operator recovery of the recorded managed child.
 - [x] Smoke-test real App authentication in a locally built hardened ARM64 role:
   root-owned mode-0600 key, read-only mount/root, outbound authenticated HTTPS,
   token revocation and owned-resource cleanup. No database/crawl was involved.
-- [ ] Recheck the real VM's key bind ownership/access and outbound network path;
-  local Docker volume staging does not establish OCI host permissions/firewalls.
+- [x] Verify the VM crawler's key access and outbound authenticated network path
+  through a successful full production crawl, not just local volume staging.
 
 ### 6. Backups, alerts, and operations
 
@@ -160,40 +163,53 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Add age sealing/offline recovery and OCI CLI upload plus full SHA-256
   read-back verification; test real encryption/restoration and a local object-store
   contract without an OCI account. Support encrypted pre-deploy backups too.
-- [ ] Install/configure the backup timer, offline identities and scoped OCI
-  instance-principal permissions on the VM; verify real capacity/runtime/quotas.
-- [ ] Upload encrypted backups to OCI Object Storage with scoped permissions and
-  lifecycle rules. Keep recovery material accessible if the VM is lost.
-- [ ] Restore an encrypted off-site production backup into a separate database
-  and verify schema, catalog counts, and discovery, including VM-loss recovery,
-  before relying on the complete backup procedure.
+- [x] Configure the backup timer, public recipients and scoped OCI instance
+  principal. The first catalog backup completed in 46 seconds; enable the daily
+  05:15 UTC schedule and 36-hour missing-success monitoring after its success.
+- [x] Upload the encrypted catalog backup to private OCI Object Storage and
+  verify a complete downloaded copy against its SHA-256 checksum.
+- [x] Restore that off-site production archive on a separate Windows host:
+  schema `20261027_01`, 62,459 repositories/active memberships, zero running
+  crawls, and working released-image page/API discovery, filtering and exclusion.
+- [ ] Preserve two independent offline recovery-key copies. The operator
+  confirmed only one copy currently exists; do not publish its contents/path.
+- [ ] Review actual storage quotas/growth and remote retention. No automatic
+  remote deletion is enabled; local seven-day/minimum-two retention is separate.
+- [ ] Rehearse replacement-host configuration, credentials/DNS recovery and
+  measure full VM-loss RPO/RTO. A local database restore is not a rebuilt VM.
 - [x] Choose email alerts through configurable SMTP; credentials/recipients stay
-  in private VM configuration, not the repository. No live delivery tested yet.
+  in private VM configuration, not the repository. Live delivery is now confirmed.
 - [x] Implement TLS-only email for crawler/systemd and opt-in deployment failures,
   with safe identifiers/diagnostic commands, not raw logs or secrets. Test actual
   TLS on loopback, durable retries, cooldown, recovery and non-recursive handlers.
 - [x] Wire backup failure email and success watermarks; refuse watermark promotion
   on failed upload/read-back/retention/lease cleanup. A later failed run cannot
   erase the last verified success. Explicit local-only rehearsals never count.
-- [ ] Configure the real SMTP provider/sender/recipients, confirm its free quota,
-  and test inbox delivery and failure/recovery without relying solely on SMTP acceptance.
+- [x] Configure dedicated Gmail sender/App Passwords privately for the VM and
+  protected GitHub monitoring environment; confirm both failure/recovery emails
+  arrived in the operator's inbox, not only that SMTP accepted them.
+- [ ] Review ongoing provider sending/storage quotas against actual usage.
 - [x] Implement GitHub-hosted external HTTPS/API and host/crawl/backup telemetry
   monitoring with protected environment-only SMTP secrets, durable pending email,
   reminders and recovery. Test real TLS loopback delivery and forged/stale data.
   The independent monitoring environment is configured and read back.
-  The permanent issue #26 and its Actions variable are configured; monitoring
-  is explicitly disabled pending live acceptance.
-- [ ] Configure the real hostname, dedicated telemetry App/anchor and SMTP
-  environment secrets, enable the external schedule and verify actual outage,
-  staleness and recovery emails after the OCI stack exists. GitHub itself is
-  still a shared monitoring failure domain; see deployment/MONITORING.md.
+  The permanent issue #26 and its Actions variable are configured.
+- [x] Configure the real hostname, dedicated App/telemetry anchor and protected
+  SMTP secrets. Verify fresh host/crawl/backup watermarks, real-site healthy runs
+  and a controlled probe failure/recovery with both emails received; restore
+  the real origin and enable the external schedule.
+- [ ] Test host/crawl/backup staleness independently with disposable telemetry,
+  pending delivery after SMTP rejection, and actual VM/network outage recovery.
+  GitHub itself remains a shared failure domain; see deployment/MONITORING.md.
 - [x] Bound all production Docker logs and container resources; add a reviewed,
   optional host-wide journald limits example and operator commands.
 - [x] Add bounded host-local free-space/inode and verified TLS-expiry probes to
   the hourly email monitor, including safe failure/recovery notices and tests.
   Crawl/backup success-age monitoring is already implemented above.
-- [ ] Install/verify the journald policy and configure/test real disk/TLS probes
-  on the VM; verify certificate renewal and actual alert inbox delivery.
+- [x] Enable the hourly VM monitor and verify a completed disk/TLS/freshness
+  check plus hourly telemetry publication after successful crawl and backup.
+- [ ] Install/verify the journald policy and test low-disk/TLS-expiry alerts;
+  observe certificate renewal and actual alert inbox delivery for those cases.
 - [x] Document recovery from stuck crawls, failed migrations, full disks, revoked
   GitHub credentials, and complete VM loss/replacement.
 - [x] Define host updates/reboots, secret rotation, and image cleanup in
@@ -226,7 +242,8 @@ VM steps; do not attempt remote access or live deployment.
 - [x] Verify the first GHCR package is publicly accessible with a complete
   anonymous exact-digest ARM64 pull using a credential-free Docker configuration.
   Never copy the temporary Actions token to the VM. The release workflow and
-  all four deployment assets are ready; no production deployment has started.
+  all four deployment assets are ready. The later AMD64 production deployment
+  is recorded separately below.
 - [x] Implement the production workflow, protected production approval and
   outbound-only VM pull mechanism with a separate repository-scoped App. Bind
   approval to immutable run/attempt receipts, verify signed source and
@@ -237,16 +254,16 @@ VM steps; do not attempt remote access or live deployment.
   require the native rehearsal again on each final PR head.
 - [x] Use least-privilege workflow permissions and pinned third-party action
   revisions; keep untrusted PR content away from privileged events and secrets.
-- [ ] Install the reviewed puller, configure its dedicated App and protected
-  environment variable, and verify the first real approved deployment after OCI
-  exists. See deployment/AUTOMATION.md; no live VM path is claimed by CI.
+- [x] Install the reviewed puller, configure its dedicated App and protected
+  environment variables, and verify the first real approved deployment. The
+  VM reported success and independent public HTTPS/discovery checks passed.
   During v0.1.1 setup, apply the documented alert-state systemd override and
   verify an idle poll plus its recovery notification before dispatching. Upgrade
   the bootstrap HTTP client for Actions artifact media negotiation and verify
   actual approval ZIP/release archive downloads. Upgrade the attestation helper
   to use isolated writable CLI configuration/cache directories and verify both
-  signatures inside the service sandbox. Live deployment acceptance remains
-  pending until the operator confirms it.
+  signatures inside the service sandbox. These operator-applied compatibility
+  fixes preserve the immutable v0.1.1 release archive/image.
 
 ### 8. Repository administration and contributor basics
 
@@ -292,13 +309,15 @@ through authenticated APIs, as recorded above.
   current Always Free quotas, ARM availability, storage, and network costs.
   Use eligible resources and quotas/budget notifications for the zero-cost
   requirement; budget alerts alone do not cap spending.
-- [ ] Complete setup of the provisioned AMD64 E2.1.Micro (Ubuntu 24.04 Minimal,
-  1 GB RAM, 100 GB boot volume); install Docker Engine, Compose, and host tools.
+- [x] Set up the provisioned AMD64 E2.1.Micro (Ubuntu 24.04 Minimal,
+  1 GB RAM, 100 GB boot volume); install and verify Docker, Compose and host tools.
   A1 provisioning failed for lack of capacity. The VM boots and Bastion SSH
-  access works with the replacement key. Document boot/data volume preservation, automatic
-  startup, and recovery after idle-instance reclamation.
-- [ ] Reserve/record the public IP, choose a hostname, and configure DNS. Use a
-  free subdomain or separately acquired domain; OCI is not a free registrar.
+  access works with the replacement key.
+- [ ] Verify deployed-stack automatic startup after reboot, boot/data-volume
+  preservation and recovery after idle-instance reclamation.
+- [x] Record the current public IP privately and configure the free hostname
+  https://ghrandom.duckdns.org. Public DNS/HTTPS/discovery checks passed.
+- [ ] Confirm public-IP reservation/change recovery and DNS update maintenance.
   Publish IPv6 DNS only after testing IPv6 networking/firewall rules too.
 - [ ] Configure OCI VCN/security groups and host firewall: public TCP 80/443 and,
   if using Caddy HTTP/3, UDP 443. Keep PostgreSQL, pgAdmin, Docker API, and public
@@ -306,14 +325,15 @@ through authenticated APIs, as recorded above.
 - [ ] Configure Bastion access and required private SSH rules/agent/session
   prerequisites. Use passphrase-protected admin keys, disable password/root SSH
   login, and restrict client CIDRs. Verify access before closing bootstrap access.
-- [ ] Create root-owned production configuration/key files outside the repo,
+- [x] Create root-owned production configuration/key files outside the repo,
   replace placeholders, and check permissions and matching DB credentials.
   URL-encode reserved password characters in the SQLAlchemy database URL.
-- [ ] Configure Object Storage, restricted backup identity, encryption/recovery
-  access, lifecycle rules, and alert destination within free quotas.
+- [x] Configure private Object Storage, restricted instance-principal backup
+  access, public-key encryption and email destinations; verify upload/read-back
+  and independent off-site recovery. Quotas/retention/key redundancy remain above.
 - [x] Configure and verify GitHub main/tag protection, security reporting,
   dependency maintenance and protected production environment/review settings.
-- [ ] Configure private VM deployment credentials/scopes and validate the live
+- [x] Configure private VM deployment credentials/scopes and validate the live
   deployment path after automation and OCI setup; package publication/access
   acceptance is tracked independently in section 7.
 
@@ -323,7 +343,7 @@ through authenticated APIs, as recorded above.
   #25, with all three required checks green on the exact PR and merge commits.
 - [x] Rehearse deployment, encrypted/local restore and same-schema rollback with
   disposable data, including discovery and failure guards, in native ARM64 CI.
-  Production/off-site acceptance remains separately unchecked above.
+  Production/off-site evidence and remaining operational checks are separate above.
 - [x] Create signed `v0.1.0` and its GitHub Release; confirm the workflow publishes
   the expected ARM64 image and immutable digest.
 - [x] Publish and independently verify signed AMD64 v0.1.1 after green PR and
@@ -332,20 +352,30 @@ through authenticated APIs, as recorded above.
   App-auth/revocation passed. Published-image peak: 401.9 MiB under 768 MiB with
   no swap/OOMs/restarts. See the evidence below and use the ordered
   [operator handoff](deployment/FIRST_DEPLOYMENT.md); live acceptance stays manual.
-- [ ] Deploy the new AMD64 digest and matching files, back up as appropriate, migrate
+- [x] Deploy the new AMD64 digest and matching files, back up as appropriate, migrate
   once, and start PostgreSQL/web/Caddy. Record the deployment in GitHub's
   `production` environment as part of the deployment workflow.
-- [ ] Complete the first full crawl and confirm an active catalog before launch.
-  Verify filters, Any, single-result fallback, immediate repetition avoidance,
-  and no-result behavior through the public page/API.
+- [x] Complete the first full crawl and confirm an active 62,459-repository
+  catalog, public Any/Python filtering and immediate repetition avoidance.
+- [ ] Verify public single-result fallback/no-result cases and complete manual
+  page/filter checks; restored-image and CI checks do not replace those checks.
 - [ ] Verify DNS/HTTPS, intended public routes/ports, six-hour scheduling and
   sort rotation, failed/interrupted-run recovery, restored backups, alert delivery,
   and recovery after a host reboot.
 - [x] Record operator commands, verified release version/digest and recovery
   instructions in the README and matching operator guides; retain product
   enhancements in ROADMAP.md.
-- [ ] Record the actual public site URL and deployed version/container state
-  after OCI setup. A published release is not evidence of a deployed website.
+- [x] Record the actual public site URL, deployed version/digest and operator
+  evidence in deployment/OPERATIONS.md. Release publication alone is insufficient.
+
+## Live deployment evidence — 2026-10-28
+
+The operator completed all VM work personally. See the
+[acceptance record](deployment/OPERATIONS.md#live-acceptance--2026-10-28) for the
+successful production workflow, first crawl/backup, independent restore and
+GitHub monitoring runs. External failure/recovery inbox delivery was confirmed
+before scheduled monitoring was enabled. Unchecked operational items above
+remain open; this does not certify a complete replacement-VM or reboot rehearsal.
 
 ## AMD64 release evidence — 2026-10-27
 
@@ -383,9 +413,9 @@ through authenticated APIs, as recorded above.
   original tags/images/assets are preserved. Routine Actions PRs remain separate
   maintenance, not identified first-deployment blockers.
 
-Only operator-owned OCI/private configuration and live acceptance remain.
-No host, DNS, SMTP, Object Storage, live crawler or production deployment was
-configured by this repository work.
+At this release-publication milestone, operator-owned OCI/private configuration
+and live acceptance still remained. The later deployment evidence above records
+what has since been verified; repository publication itself configured no VM.
 
 ## First-release evidence — 2026-10-20
 
@@ -411,9 +441,9 @@ configured by this repository work.
   token revocation and private test-volume removal succeeded, without a crawl or
   database operation. Only the pre-existing local database container remains up.
 
-Live OCI installation, actual DNS/TLS, private SMTP/telemetry configuration,
-inbox delivery, production crawls and off-site recovery remain separately
-unchecked. No public website or production deployment is claimed here.
+At this historical v0.1.0 milestone, live OCI installation, DNS/TLS, SMTP,
+production crawls and off-site recovery remained unchecked. Later v0.1.1 live
+acceptance is recorded above; this ARM64 release is not the deployed version.
 
 ## Implementation order
 
