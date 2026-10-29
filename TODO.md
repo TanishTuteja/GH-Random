@@ -1,19 +1,18 @@
 # Deployment checklist — Oracle Cloud Always Free
 
-Reviewed against the repository and deployment evidence on 2026-10-28. `[x]`
+Reviewed against the repository and deployment evidence on 2026-10-29. `[x]`
 means verified at the scope stated in that item; `[ ]` means work remains.
-Local/CI checks alone do not establish production behavior. OCI host state is
-operator-reported, without remote inspection by the agent. Public HTTPS,
-GitHub deployment/monitoring results and the local off-site restore were checked
-independently; see the [live acceptance record](deployment/OPERATIONS.md#live-acceptance--2026-10-28). The public
+Local/CI checks alone do not establish production behavior. The operator performed
+the initial OCI setup, then expressly authorized remote VM acceptance work.
+Public HTTPS, GitHub monitoring, private host checks and an off-site restore have
+been checked at the scope in the [live acceptance record](deployment/OPERATIONS.md#live-acceptance--2026-10-28). The public
 repository's active main-protection ruleset was verified on 2026-10-17; other
 GitHub settings remain pending unless explicitly marked complete.
 
-The operator retains all OCI, SSH, hostname and private configuration work.
 The first production deployment, full crawl, encrypted catalog backup, separate
-Windows restore and email acceptance are complete. External monitoring is now
-enabled. Keep unverified operational checks below open; do not infer them from
-the first successful run or attempt remote VM access.
+Windows restore and email acceptance are complete. GitHub monitoring and a free
+independent availability monitor are enabled. Keep unverified operational checks
+below open; do not infer them from the first successful run.
 
 ## Repository implementation
 
@@ -23,7 +22,8 @@ the first successful run or attempt remote VM access.
   micro (PR #32). Preserve the ARM64-only v0.1.0 assets. Test a shared 768 MiB
   no-swap budget with 50,000 active repos and 1.45 million retained memberships:
   initial peak 401.8 MiB, no OOM kills/restarts, all 200 synthetic queries passed.
-  Live micro CPU/capacity acceptance remains the operator's task.
+  The subsequent live memory correction and remaining capacity observations are
+  tracked below; synthetic CI load is not a live capacity guarantee.
 - [x] Resolve the pre-release CA trust incident (PR #33): certifi 2026.10.23,
   uv 0.13.5, Python 3.12.16, patched Caddy CA store, unused pip/ensurepip removal,
   real trust-store checks and no-cache release builds. Recheck repository alerts
@@ -120,7 +120,13 @@ the first successful run or attempt remote VM access.
   one catch-up after missed slots, runtime limits, and failure/next-slot behavior.
 - [x] Install/enable the production crawler units and verify the six-hour UTC
   schedule. The first managed crawl completed in 2 h 8 min with cleanup confirmed.
-- [ ] Verify a scheduled second run/sort rotation and catch-up after reboot;
+- [x] Verify scheduled subsequent runs and all four sort orders, followed by a
+  wrap to updated-descending. At 08:05 UTC on 2026-10-29, five crawls had
+  completed, none had failed, and the sixth was running stars-descending.
+- [x] Verify automatic service/timer startup after a controlled reboot following
+  six successful crawls and a fresh verified off-site backup. Preserve the exact
+  active catalog, schema, database volume and application image.
+- [ ] Observe production catch-up after a genuinely missed six-hour slot;
   measure full-crawl resource peaks and longer-term runtime headroom.
 - [x] Add database-scoped session ownership for all manual/scheduled CrawlService
   calls and online Alembic operations. Contenders fail promptly; every statement
@@ -139,8 +145,14 @@ the first successful run or attempt remote VM access.
 - [x] Implement crawler failure/timeout systemd email hooks and an hourly
   missing-success monitor with durable retries, cooldowns and recovery notices.
 - [x] Configure VM SMTP and confirm real puller failure/recovery emails arrived.
-- [ ] Verify crawl/backup staleness emails and interrupted-run recovery on the VM;
-  Docker outages may require operator recovery of the recorded managed child.
+- [x] Verify crawl/backup staleness failure/recovery inbox delivery from an
+  isolated VM acceptance state, without altering production success markers.
+- [x] Rehearse abrupt process exit and the next normal crawl on this VM with
+  the exact released image and an isolated temporary database: preserve the
+  active membership, recover the abandoned run and retain sort rotation.
+  Remove only the owned test database/containers; the production crawl continued.
+- [ ] Exercise managed-child cleanup during a real service interruption or host
+  restart. Docker outages may require operator recovery of the recorded child.
 - [x] Smoke-test real App authentication in a locally built hardened ARM64 role:
   root-owned mode-0600 key, read-only mount/root, outbound authenticated HTTPS,
   token revocation and owned-resource cleanup. No database/crawl was involved.
@@ -167,14 +179,20 @@ the first successful run or attempt remote VM access.
   principal. The first catalog backup completed in 46 seconds; enable the daily
   05:15 UTC schedule and 36-hour missing-success monitoring after its success.
 - [x] Upload the encrypted catalog backup to private OCI Object Storage and
-  verify a complete downloaded copy against its SHA-256 checksum.
+  verify a complete downloaded copy against its SHA-256 checksum. The subsequent
+  scheduled backup succeeded on 2026-10-29 at 05:16:16 UTC after full read-back.
 - [x] Restore that off-site production archive on a separate Windows host:
   schema `20261027_01`, 62,459 repositories/active memberships, zero running
   crawls, and working released-image page/API discovery, filtering and exclusion.
 - [ ] Preserve two independent offline recovery-key copies. The operator
-  confirmed only one copy currently exists; do not publish its contents/path.
-- [ ] Review actual storage quotas/growth and remote retention. No automatic
-  remote deletion is enabled; local seven-day/minimum-two retention is separate.
+  confirmed only one copy currently exists and deferred the second copy.
+  Different partitions on one physical disk are not independent copies.
+- [x] Inspect current backup usage and define safe remote-retention review:
+  41,892,828 bytes across five objects on 2026-10-29. Remote deletion stays off;
+  review usage monthly and preserve at least two known-good off-site copies.
+- [ ] Confirm actual free storage quotas and measure multi-day growth before
+  enabling any supervised remote expiration. Local seven-day/minimum-two
+  retention does not delete remote objects.
 - [ ] Rehearse replacement-host configuration, credentials/DNS recovery and
   measure full VM-loss RPO/RTO. A local database restore is not a rebuilt VM.
 - [x] Choose email alerts through configurable SMTP; credentials/recipients stay
@@ -198,9 +216,18 @@ the first successful run or attempt remote VM access.
   SMTP secrets. Verify fresh host/crawl/backup watermarks, real-site healthy runs
   and a controlled probe failure/recovery with both emails received; restore
   the real origin and enable the external schedule.
-- [ ] Test host/crawl/backup staleness independently with disposable telemetry,
-  pending delivery after SMTP rejection, and actual VM/network outage recovery.
-  GitHub itself remains a shared failure domain; see deployment/MONITORING.md.
+- [x] Exercise host/crawl/backup staleness independently using disposable
+  in-memory telemetry; verify pending notification retry after a real loopback
+  SMTP rejection and subsequent provider delivery. Production watermarks and
+  the GitHub incident ledger were unchanged by this isolated acceptance test.
+- [x] Add independent free UptimeRobot HTTP/S availability monitoring of the
+  discovery API at a configured five-minute interval; verify active/Up status,
+  Free plan and operator-confirmed test email. Retain GitHub's stricter response
+  validation and freshness checks; its cron delivery is best effort.
+- [x] Verify real public-site outage/recovery through both external monitors:
+  stop only Caddy with an automatic restoration backstop, confirm GitHub's site
+  incident and closure, and receive both providers' failure/recovery email pairs.
+  The production database/crawler stayed running; full VM loss remains separate.
 - [x] Bound all production Docker logs and container resources; add a reviewed,
   optional host-wide journald limits example and operator commands.
 - [x] Add bounded host-local free-space/inode and verified TLS-expiry probes to
@@ -208,14 +235,23 @@ the first successful run or attempt remote VM access.
   Crawl/backup success-age monitoring is already implemented above.
 - [x] Enable the hourly VM monitor and verify a completed disk/TLS/freshness
   check plus hourly telemetry publication after successful crawl and backup.
-- [ ] Install/verify the journald policy and test low-disk/TLS-expiry alerts;
-  observe certificate renewal and actual alert inbox delivery for those cases.
+- [x] Install/verify the journald policy: 256 MiB persistent, 64 MiB runtime,
+  1 GiB free-space reserve and seven-day retention. Verify isolated low-disk and
+  TLS-expiry failure/recovery emails; the operator received all eight acceptance
+  emails covering these and crawl/backup staleness. No disk was filled or host
+  clock/certificate changed. Actual certificate renewal remains open above.
 - [x] Document recovery from stuck crawls, failed migrations, full disks, revoked
   GitHub credentials, and complete VM loss/replacement.
 - [x] Define host updates/reboots, secret rotation, and image cleanup in
   deployment/OPERATIONS.md; preserve data, backup keys and rollback images.
-- [ ] Measure initial resource limits, disk growth and recovery targets on the
-  actual VM; rehearse the documented incidents and reboot recovery there.
+- [x] Inspect live resource limits and correct the observed web OOM: raise only
+  web from 128 to 192 MiB, recreate it with the same verified v0.1.1 digest, and
+  mirror the default in PR #41. Twenty subsequent API requests produced no OOM
+  events/restarts, with a roughly 106 MiB measured web peak. This limited sample
+  does not establish sustained capacity or response-time guarantees. The next
+  morning's inspection still showed zero web restarts/OOMs at the 192 MiB limit.
+- [ ] Measure multi-day disk/memory growth and full recovery targets on the
+  actual VM; rehearse the remaining incidents and reboot recovery there.
 
 ### 7. GitHub Actions and releases
 
@@ -305,16 +341,17 @@ Unchecked items require setup or confirmation. Repository files alone cannot
 establish that OCI resources exist; completed GitHub settings were read back
 through authenticated APIs, as recorded above.
 
-- [ ] Create/verify OCI tenancy and MFA, choose the home region, and confirm
-  current Always Free quotas, ARM availability, storage, and network costs.
-  Use eligible resources and quotas/budget notifications for the zero-cost
-  requirement; budget alerts alone do not cap spending.
+- [x] Verify the Hyderabad OCI tenancy and Always Free badge for the running
+  E2.1.Micro. The console shows Free Tier/trial, and the operator confirmed MFA.
+- [ ] Confirm tenancy-wide free quotas, storage/network usage and cost alerts.
+  Budget notifications alone do not cap spending; do not upgrade to paid usage.
 - [x] Set up the provisioned AMD64 E2.1.Micro (Ubuntu 24.04 Minimal,
   1 GB RAM, 100 GB boot volume); install and verify Docker, Compose and host tools.
   A1 provisioning failed for lack of capacity. The VM boots and Bastion SSH
   access works with the replacement key.
-- [ ] Verify deployed-stack automatic startup after reboot, boot/data-volume
-  preservation and recovery after idle-instance reclamation.
+- [x] Verify deployed-stack startup and boot/data-volume preservation after the
+  2026-10-29 controlled reboot; public page/API and all five timers passed.
+- [ ] Rehearse recovery after complete VM loss or idle-instance reclamation.
 - [x] Record the current public IP privately and configure the free hostname
   https://ghrandom.duckdns.org. Public DNS/HTTPS/discovery checks passed.
 - [ ] Confirm public-IP reservation/change recovery and DNS update maintenance.
@@ -323,8 +360,14 @@ through authenticated APIs, as recorded above.
   if using Caddy HTTP/3, UDP 443. Keep PostgreSQL, pgAdmin, Docker API, and public
   SSH closed. Test externally; Docker-published ports can bypass UFW rules.
 - [ ] Configure Bastion access and required private SSH rules/agent/session
-  prerequisites. Use passphrase-protected admin keys, disable password/root SSH
-  login, and restrict client CIDRs. Verify access before closing bootstrap access.
+  prerequisites; read back OCI ingress/client CIDR rules. One-hour private
+  Bastion sessions and a passphrase-protected replacement key already work.
+- [x] Disable root/password/keyboard-interactive SSH, validate effective sshd
+  settings and a fresh Ubuntu connection before closing the working session.
+- [x] Test public TCP isolation: 80/443 reachable; 22, 5432, 5050, 2375, 2376
+  and 8000 filtered/unreachable. Verify only Caddy publishes container ports.
+  OCI rule inspection, external UDP/IPv6 and forwarded-client-address checks
+  remain separate; a timeout does not identify the blocking firewall layer.
 - [x] Create root-owned production configuration/key files outside the repo,
   replace placeholders, and check permissions and matching DB credentials.
   URL-encode reserved password characters in the SQLAlchemy database URL.
@@ -357,11 +400,20 @@ through authenticated APIs, as recorded above.
   `production` environment as part of the deployment workflow.
 - [x] Complete the first full crawl and confirm an active 62,459-repository
   catalog, public Any/Python filtering and immediate repetition avoidance.
-- [ ] Verify public single-result fallback/no-result cases and complete manual
-  page/filter checks; restored-image and CI checks do not replace those checks.
-- [ ] Verify DNS/HTTPS, intended public routes/ports, six-hour scheduling and
-  sort rotation, failed/interrupted-run recovery, restored backups, alert delivery,
-  and recovery after a host reboot.
+- [x] Verify real public API singleton fallback and empty results: C# with
+  100,001+ stars repeats its sole repository when excluded; Ruby in that band
+  returns the expected 404. All language/star/pushed filter values passed.
+- [x] Verify the browser empty-result page with Ruby/100,001+ stars and the
+  expected message; browser discovery with Any also preserves the clean root URL.
+- [x] Verify browser singleton fallback: two submissions with C#/100,001+ stars
+  rendered the same sole repository successfully and retained the clean URL.
+- [x] Obtain operator manual verification of ordinary discovery, empty results
+  and singleton fallback on the public site. Further UI changes still require
+  their own manual verification before completion or commit.
+- [x] Verify public DNS/HTTPS/page/API, TCP port isolation, scheduled sort
+  rotation, isolated packaged crash recovery, off-site database/app restore,
+  real outage alerts and controlled host reboot recovery. Remaining OCI rule
+  read-back, managed-child interruption and full VM-loss checks stay separate.
 - [x] Record operator commands, verified release version/digest and recovery
   instructions in the README and matching operator guides; retain product
   enhancements in ROADMAP.md.
@@ -370,12 +422,13 @@ through authenticated APIs, as recorded above.
 
 ## Live deployment evidence — 2026-10-28
 
-The operator completed all VM work personally. See the
+The operator completed initial VM setup; later remote acceptance was explicitly
+authorized. See the
 [acceptance record](deployment/OPERATIONS.md#live-acceptance--2026-10-28) for the
-successful production workflow, first crawl/backup, independent restore and
-GitHub monitoring runs. External failure/recovery inbox delivery was confirmed
-before scheduled monitoring was enabled. Unchecked operational items above
-remain open; this does not certify a complete replacement-VM or reboot rehearsal.
+successful deployment/restore, scheduled crawling, host hardening, memory
+correction, isolated email acceptance and independent availability monitor.
+Unchecked operational items above remain open; this does not certify a complete
+replacement-VM or reboot rehearsal.
 
 ## AMD64 release evidence — 2026-10-27
 

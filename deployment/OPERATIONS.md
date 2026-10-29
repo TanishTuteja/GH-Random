@@ -34,6 +34,20 @@ inspect `crawler-success.json` and `backup-success.json` and verify the public
 discovery flow. Managed success markers survive later failures. Direct CLI
 crawls do not update the managed marker; prefer the systemd service.
 
+If broad discovery becomes slow after initial catalog population or a restore,
+inspect a bounded read-only query plan and the planner statistics first. The
+small generation table can remain unanalyzed while the membership table grows.
+Run this unchanged for the documented production container; no replacements
+are needed. It refreshes statistics without changing catalog rows or schema:
+
+```sh
+sudo docker exec gh-random-database-1 sh -eu -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -v ON_ERROR_STOP=1 -c "SET statement_timeout = 15000; ANALYZE catalog_generations;"'
+```
+
+Measure the same request again and keep memory limits in place. This maintenance
+does not remove the cost of randomly selecting across a growing catalog; inspect
+plans and latency again after substantial growth rather than raising every limit.
+
 ## Stuck or failed crawler
 
 1. Inspect the crawler journal, catalog status, private `crawler.json` and
@@ -247,11 +261,12 @@ cannot establish any of those live-account conditions.
 
 ## Live acceptance — 2026-10-28
 
-The operator performed OCI/SSH/private configuration work personally and supplied
-the host results below. GitHub metadata and public HTTP/API checks were verified
-independently. The recovery rehearsal used the operator's separate Windows host;
-it did not connect to or overwrite the production database. No credentials,
-email addresses, private key contents or private key paths belong in this record.
+The operator performed the initial OCI/SSH/private configuration work and supplied
+the first-deployment results. Later, the operator explicitly authorized remote
+VM acceptance through temporary Bastion SSH. The additional checks below combine
+that direct inspection with public HTTPS/GitHub evidence and operator-confirmed
+inbox delivery. The separate Windows restore did not overwrite production.
+No credentials, email addresses or private key material/paths belong in this record.
 
 - **Release and deployment:** [v0.1.1](https://github.com/TanishTuteja/GH-Random/releases/tag/v0.1.1),
   source `94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b`, AMD64 image
@@ -268,8 +283,8 @@ email addresses, private key contents or private key paths belong in this record
 - **First managed crawl:** 2026-10-27 22:45:51 to 2026-10-28 00:54:19 UTC
   (2026-10-28 04:15:51–06:24:19 IST), 200/200 combinations, 62,459 staged
   repositories and `succeeded cleanup=True`. The enabled timer's next slot was
-  confirmed at 06:00 UTC/11:30 IST. Scheduled sort rotation and interrupted-run
-  recovery have not yet been exercised on this host.
+  confirmed at 06:00 UTC/11:30 IST. Subsequent scheduled rotation is recorded below;
+  interrupted-run recovery remains a separate live check.
 - **Catalog backup:** 2026-10-28 04:30:22–04:31:08 UTC, encrypted upload and
   complete off-site SHA-256 read-back succeeded. The daily 05:15 UTC/10:45 IST
   timer and 36-hour backup freshness checks were enabled afterward. Local
@@ -302,8 +317,128 @@ email addresses, private key contents or private key paths belong in this record
   [enabled real-site check](https://github.com/TanishTuteja/GH-Random/actions/runs/40635039621)
   passed. This does not establish actual VM-loss or stale-watermark handling.
 
-Still required: a second independent offline recovery-key copy (the operator
-confirmed only one exists), actual scheduled runs/rotation, full-crawl resource
-peaks and retention growth, reboot/renewal/port checks, separate staleness and
-SMTP-retry inbox tests, and replacement-host configuration/DNS/credential
-recovery. Keep the specific pending items in [TODO.md](../TODO.md) open.
+### Further live acceptance — 2026-10-28/29
+
+- **Scheduled crawling:** at 19:39 UTC on October 28, three completed crawls had
+  used updated-descending, stars-descending and updated-ascending. The latter two
+  ran 06:00:24–08:06:41 and 12:00:23–14:09:28 UTC. A fourth, stars-ascending,
+  started at 18:00:19 UTC and was still progressing at 20:06 UTC. The inspection
+  counted 174,915 canonical repositories, 145,707 active memberships and a 150 MB
+  database; staging/retired memberships explain why these counts differ. These
+  are dated observations, not current or lifetime totals.
+- **Next-morning inspection:** at 08:05 UTC on October 29, five crawls had
+  completed with zero failures, and a sixth was running stars-descending. The
+  fourth completed stars-ascending at 20:08:37 UTC on October 28; the fifth ran
+  updated-descending from 00:00:33 to 02:22:14 UTC on October 29. This proves all
+  four sort orders and a cycle wrap. Read-only SQL counted 203,609 canonical
+  repositories, 903,801 memberships across six generations, 202,688 active
+  memberships and 227,186,355 database bytes. Counts include retained/staging
+  data and are snapshots, not lifetime totals.
+- **Live memory correction:** kernel evidence showed Uvicorn OOM-killed at
+  19:22:35 UTC under its 128 MiB limit. Only web was recreated with a private
+  192 MiB setting, retaining the exact v0.1.1 digest and database/crawler. The
+  subsequent 20 representative API requests, at most two concurrent, produced
+  no web OOM events or restarts and a roughly 106 MiB measured peak. Client
+  transport-inclusive p95 was about 13.25 seconds; this sample establishes
+  neither sustained capacity nor a latency guarantee. PR #41 mirrors the
+  192 MiB default; normal container ceilings total 704 MiB. The shared 768 MiB
+  native rehearsal remains synthetic and separate from this real incident.
+  The October 29 inspection still found zero web restarts/OOMs under 192 MiB,
+  a healthy database and no database/Caddy restarts. The host had 353 MiB
+  available memory and approximately 92 GB free disk space.
+- **Host hardening:** effective sshd configuration rejects root, password and
+  keyboard-interactive login; a fresh Ubuntu key connection passed after reload.
+  Private production files were root-owned mode 0600. The installed journald
+  policy limits persistent/runtime usage to 256/64 MiB, reserves 1 GiB free and
+  retains at most seven days. The operator confirmed OCI MFA. The console showed
+  the running micro as Always Free and the tenancy as Free Tier/trial.
+- **Public behavior:** all language, star and pushed filter options matched
+  their API semantics. Ruby with 100,001+ stars produced the expected empty 404;
+  C# in the same band had one repository and exclusion correctly returned it
+  again. Other exclusions switched results when alternatives existed. Browser
+  discovery updated the result while leaving the root URL clean. These automated
+  checks do not stand in for the operator's manual UI verification.
+  Fresh browser checks on October 29 rendered the Ruby/100,001+ empty-result
+  message correctly and returned the sole C#/100,001+ repository on two
+  submissions, retaining the clean URL in both cases.
+- **Planner maintenance:** on October 29, a bounded query plan underestimated
+  202,688 matching rows as 1,181 and used a nested-loop repository lookup.
+  Refreshing only `catalog_generations` statistics changed the plan to a hash
+  join. The direct full discovery request measured 10.807 seconds before and
+  1.973 seconds after; a subsequent public HTTPS request from the VM took 2.318
+  seconds. This is a short measurement under a live crawl, not a latency SLA.
+  No catalog rows, schema, application image or memory settings changed.
+- **Network observations:** public TCP 80/443 were reachable; 22, 5432, 5050,
+  2375, 2376 and 8000 timed out from the external client. Only Caddy published
+  container ports. This does not identify which firewall blocked a port or prove
+  OCI ingress rules, external UDP/IPv6, or the app's forwarded client address.
+  TLS peer/hostname validation and the canonical HTTP redirect passed; the
+  observed certificate expires January 25, 2027. Renewal has not yet occurred.
+- **Email acceptance:** installed notification helpers ran with isolated state
+  on the VM. A real loopback TLS SMTP 550 rejection retained pending delivery;
+  retry through the configured provider succeeded. Stale crawl, stale backup,
+  low-space threshold and near-expiry TLS probes each produced failure/recovery
+  mail; the operator confirmed all eight arrived. Disk space was not consumed
+  artificially, the host clock/certificate were unchanged, and production alert
+  state/success-marker hashes were preserved. Host/crawl/backup external freshness
+  codes were also checked independently with in-memory API fixtures, not forged
+  production telemetry or a real host outage.
+- **Independent availability:** UptimeRobot monitor `804462089` is active/Up
+  on the Free plan, checking the discovery API every five minutes. The operator
+  confirmed its test email arrived; no payment method or paid credits were added.
+  It supplements GitHub's stricter response/freshness checks. Actual consecutive
+  GitHub scheduled runs on October 28 were separated by 6 h 45 min 51 s; the
+  configured fifteen-minute cron must not be treated as an execution guarantee.
+- **Backup usage:** at 19:51 UTC on October 28, the private remote prefix held
+  four objects totaling about 14.9 MB, including the setup-test object. Three
+  verified local backups existed. Remote deletion remains disabled; review usage
+  monthly and preserve at least two known-good off-site copies before considering
+  any independently supervised pruning policy.
+- **Scheduled backup and timers:** the October 29 backup ran 05:15:08–05:16:16 UTC
+  and succeeded after full off-site GET/checksum verification at 05:16:12 UTC.
+  All five managed timers were active/enabled at the morning inspection, with
+  the last service result successful. This is normal scheduling evidence;
+  it does not prove startup or missed-slot catch-up after a reboot.
+- **Packaged crash recovery on the VM:** an isolated temporary database used
+  the exact released application image and a one-item fake search plan with no
+  GitHub traffic. An actual `os._exit(17)` left a running checkpoint while its
+  prior active membership remained intact. The next normal crawl marked that
+  run/generation failed, retained the original membership, published successfully
+  and used stars-descending without advancing past the failed sort. Concurrent
+  ownership was refused. The test finished at 08:23:40 UTC on October 29; its
+  owned database and containers were removed. The real production crawl and
+  success markers were untouched. This verifies the packaged application path
+  on the host; managed systemd-child interruption remains a separate exercise.
+- **Updated remote inventory:** at 08:26 UTC on October 29, the backup prefix
+  held five objects totaling 41,892,828 bytes. No test containers remained.
+- **Real public-site outage and recovery:** Caddy alone was stopped from
+  08:29:43 to 08:37:15 UTC on October 29, with an eight-minute automatic recovery
+  backstop installed first and removed after restoration. PostgreSQL and the
+  real crawl continued running. GitHub's
+  [failure check](https://github.com/TanishTuteja/GH-Random/actions/runs/40842618556)
+  recorded a `site` incident and its
+  [recovery check](https://github.com/TanishTuteja/GH-Random/actions/runs/40843624776)
+  succeeded; issue #26 returned to no active/pending incident. The operator
+  confirmed both GitHub and UptimeRobot failure/recovery email pairs arrived.
+  This proves real public-site outage detection without claiming complete
+  VM/network-loss recovery. The operator also confirmed the live page's ordinary
+  discovery, empty-result and singleton behavior manually.
+- **Controlled reboot:** the sixth crawl published successfully at 08:43:40 UTC
+  on October 29. Read-only preflight counted 203,759 canonical/active repositories,
+  903,951 total memberships, active generation 6, six completed crawls and zero
+  running crawls at schema `20261027_01`. A new managed encrypted backup finished
+  at 08:47:44 after off-site verification at 08:47:39. Writer/deployment timers
+  were paused and no writer was active before requesting reboot at 08:49:30 UTC.
+  At 08:53:51 a changed boot ID, the same named database volume, exact catalog
+  counts/schema/generation, unchanged v0.1.1 web digest and 192 MiB limit were
+  verified. Homepage/discovery HTTPS, enabled/active startup of all five timers,
+  SSH hardening, journald policy and managed monitor/telemetry/puller success
+  passed. The next crawl remained scheduled for 12:00 UTC. No six-hour slot was
+  missed, so this establishes reboot startup, not observed missed-slot catch-up.
+
+Still required: the explicitly deferred second independent offline recovery-key
+copy; genuinely missed-slot catch-up and managed-child interruption acceptance;
+multi-day full-crawl resource peaks and three-/seven-day retention growth; actual
+certificate renewal; remaining OCI/network checks; and replacement-host
+configuration/DNS/credential recovery with measured RPO/RTO. Keep the specific
+pending items in [TODO.md](../TODO.md) open.
