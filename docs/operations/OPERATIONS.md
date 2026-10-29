@@ -215,6 +215,31 @@ PostgreSQL/Caddy named volumes and backup/release metadata. Backup retention is
 handled by the verified backup worker, not by a generic cleanup job; remote
 lifecycle rules must not expire every usable recovery copy during an outage.
 
+## Public IP and DNS recovery
+
+The October 29 console read-back confirmed the production public IPv4 is
+**ephemeral**, not reserved. It does not transfer to a replacement instance;
+see [Oracle's public-IP lifecycle](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingpublicIPs.htm).
+
+1. Recover access to the existing DuckDNS account from an independent device.
+   Keep its account recovery material and token private and available outside
+   the VM; no automated IP updater has been established by these checks.
+2. Read the replacement VM's public IPv4 in OCI after its restored database,
+   application and restricted network path are ready. Record the old address
+   privately for rollback if the old host is still available.
+3. In the signed-in DuckDNS dashboard, set `ghrandom`'s IPv4 explicitly to the
+   replacement VM address and update it. Do not use the device's detected IP.
+   For a scripted update, use HTTPS and an explicit `ip` with the account token
+   supplied privately, as documented in the [DuckDNS API](https://www.duckdns.org/spec.jsp).
+4. Preserve the Google ownership TXT record. DuckDNS has one shared TXT value
+   for the hostname and its subdomains; changing that value is a separate update.
+   Publish no AAAA record until IPv6 routing, ingress and service reachability
+   have been verified end to end.
+5. Verify public A resolution, Caddy certificate issuance/validation, homepage,
+   discovery and both external monitors. DNS caching can delay cutover. If
+   reverting, first establish that the old host is healthy, then restore its
+   explicit address and repeat those checks. No live DNS cutover was rehearsed.
+
 ## Complete VM loss or replacement
 
 1. From an independent device, obtain a verified signed release/digest, the
@@ -240,9 +265,10 @@ lifecycle rules must not expire every usable recovery copy during an outage.
    can record the recovered host's first successful apply. Do not copy old
    `current.json` paths blindly; image rollback requires a verified previous
    release record and files available on this host.
-5. Switch/verify DNS and TLS, install matching managed units, run a fresh managed
-   crawl and encrypted off-site backup, verify alerts/external monitors and reboot
-   recovery, then record actual data loss (RPO) and recovery duration (RTO).
+5. [Switch/verify DNS and TLS](#public-ip-and-dns-recovery), install matching
+   managed units, run a fresh managed crawl and encrypted off-site backup, verify
+   alerts/external monitors and reboot recovery, then record actual data loss
+   (RPO) and recovery duration (RTO).
 
 The 24-hour backup RPO and one-hour restore target **after a ready host** are
 planning targets, not measured guarantees. Test this procedure with a real
@@ -261,8 +287,9 @@ cannot establish any of those live-account conditions.
 
 ## Live acceptance — 2026-10-28
 
-Verified October 28–29, 2026; the final catalog/reboot snapshot below is from
-**October 29 at 08:53:51 UTC**. These are dated results, not a live status page.
+Verified October 28–29, 2026; the reboot snapshot is from **October 29 at
+08:53:51 UTC**, with later checks individually dated below. These are dated
+results, not a live status page.
 Remaining tasks and observation windows are tracked only in [TODO.md](../project/TODO.md).
 
 ### Deployed release
@@ -290,6 +317,28 @@ Remaining tasks and observation windows are tracked only in [TODO.md](../project
 | Host hardening | Root/password/keyboard-interactive SSH disabled and a fresh Ubuntu key connection verified; private production files root-owned mode 0600. Installed journald limits: 256 MiB persistent, 64 MiB runtime, 1 GiB free reserve, seven days. OCI MFA was operator-confirmed; the console showed the micro's Always Free badge and Free Tier/trial tenancy. |
 | Network observations | External TCP 80/443 reachable; 22, 5432, 5050, 2375, 2376 and 8000 timed out. Only Caddy publishes container ports. |
 | Controlled reboot | After the fresh verified backup and idle writers, reboot was requested at 08:49:30 UTC. A changed boot ID, unchanged database volume/catalog/schema/image and 192 MiB web limit were verified. Homepage/API, all five enabled/active timers, SSH/journal policy and managed monitor/telemetry/puller success passed. Next crawl remained at 12:00 UTC. |
+| OCI rule read-back | October 29: the instance has one VNIC with no NSGs. Its subnet has one security list, allowing public TCP 80/443 and UDP 443, TCP 22 only from the Bastion private endpoint /32, and the default ICMP rules. No database/admin or IPv6 ingress grants were listed; subnet details showed no IPv6 prefix. Bastion has one client /32 and a one-hour maximum/session TTL. The public IP is ephemeral. |
+| Cost awareness | The existing micro has the Always Free badge and the tenancy remains Free Tier/trial. Unfiltered October 1–29 Cost Analysis showed SGD 0.00, subject to billing-data delay; the monthly usage report also listed the free Compute and Block Volume SKUs. With operator approval, a root-compartment SGD 1 monthly budget and 1% actual-spend email rule were created at 21:47:40 UTC. This is a notification at SGD 0.01, not a spending cap or paid upgrade; delivery has not been induced with real spending. |
+| Forwarded client address | At 18:00:20 UTC, ordinary public HTTPS and forged-header requests both returned 200. Their uniquely matched FastAPI access logs showed the same actual external client address; the forged multi-address `X-Forwarded-For` chain was ignored. Proto, host, real-IP and `Forwarded` headers were also supplied, but backend scheme is not exposed by the existing routes/logs and was not directly asserted. |
+| Managed crawler interruption | Completed at 18:15:41 UTC using the installed bootstrap, byte-identical released supervisor and exact application image. A cloned systemd unit and unsigned fixture Compose configuration used isolated PostgreSQL, deterministic application inputs and no production credentials/public ports. Orderly stop and main-process SIGKILL each removed only the owned daemon child, preserved active fixture membership, and allowed a successful normal successor with the same pending sort and zero resumes. Production state/core containers were unchanged; all owned fixture resources were removed. |
+| Persistent timer catch-up | At 18:01:59 UTC, a disposable actual-host persistent timer coalesced three missed calendar slots into one activation, about 0.23 seconds after restart. The host clock and production schedules were unchanged; the disposable unit, stamp and data were removed. This does not establish production recovery after a genuinely missed six-hour slot. |
+
+At 21:44:31 UTC, eight crawls had completed with 216,777 canonical/active
+repositories and 1,335,662 memberships; none was running. Five local encrypted
+archives and six current backup-bucket objects each totalled about 67.4 MiB.
+The bucket count excludes old versions and other buckets. Disk use was 4.71%;
+about 496 MiB RAM was available during the incident follow-up. These snapshots
+do not establish multi-day growth or tenancy-wide billed usage.
+
+The console inventory showed Hyderabad as the only subscribed/home region, one
+micro instance, one 100 GB boot volume at VPU 10, no additional block volumes,
+and one private Standard backup bucket; root instance/boot/bucket lists were
+empty. The bucket's versioning was disabled with zero unfinished multipart
+uploads. A complete version listing at 21:54:15 UTC matched all six current
+objects and 70,633,476 bytes, with no additional versions or delete markers.
+The AD micro service limit was two, while usage/availability fields were
+unavailable. Recheck retained volume backups and actual free host capacity
+before provisioning a replacement; these observations do not reserve capacity.
 
 The restored archive's ciphertext SHA-256 was
 `6014267aedfe205350027853fa811262ce3618200eddae084d0f07319b4a332b`;
@@ -308,13 +357,24 @@ full discovery request from 10.807 to 1.973 seconds under a live crawl. These
 samples and the separate 768 MiB synthetic CI rehearsal do not establish
 sustained capacity or a latency guarantee.
 
-The real outage covered the public proxy, not complete VM/network loss. Crash
-recovery used an isolated application fixture, not a managed systemd-child
-interruption. No six-hour slot was missed during reboot. External port timeouts
-do not establish the exact OCI rule, UDP/IPv6 behavior or forwarded client
-address. Initial TLS issuance and expiry-alert tests do not establish renewal.
+The real outage covered the public proxy, not complete VM/network loss. Managed
+interruption used isolated fixture configuration, not the production catalog or
+GitHub API. No six-hour slot was missed during reboot. The rule read-back does
+not establish actual HTTP/3/IPv6 reachability.
+Initial TLS issuance and expiry-alert tests do not establish renewal.
 GitHub cron remains best effort; UptimeRobot's Free-plan five-minute HTTP/S
 monitor supplements it with basic availability checks.
+
+UptimeRobot reported a connection timeout confirmed by three German probes at
+October 29, 21:33:50 UTC; initial detection was 21:32:46 and recovery was 21:38:58.
+The recorded incident lasted 5m 8s, more than three hours after rehearsal cleanup.
+Core containers ran continuously with no restarts or OOM kills; bounded kernel,
+proxy, web and database logs showed no corresponding failure. The real crawler
+had completed at 20:13:15. Other clients received homepage/API 200 responses
+during the window, and a [manually triggered independent monitor](https://github.com/TanishTuteja/GH-Random/actions/runs/40959434609)
+passed at 21:38:23, including durable crawl/backup telemetry. This supports a
+temporary path-specific reachability problem, but does not prove its cause or
+establish a false alarm. Keep monitoring; capture network evidence if it recurs.
 
 Evidence: [production deployment](https://github.com/TanishTuteja/GH-Random/actions/runs/40596008134),
 [real outage check](https://github.com/TanishTuteja/GH-Random/actions/runs/40842618556),
