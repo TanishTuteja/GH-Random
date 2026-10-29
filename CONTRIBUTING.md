@@ -9,8 +9,8 @@ private channel in [SECURITY.md](SECURITY.md), not a public issue or PR.
 Search existing issues first. Include a release/commit and a minimal reproduction
 with synthetic data, never raw `.env` files, credentials or unreviewed logs.
 Discuss major product/schema/operations changes before building them.
-`ROADMAP.md` tracks ideas; `TODO.md` distinguishes implementation from live
-acceptance; `decisions.md` records material decisions.
+`ROADMAP.md` tracks product ideas; `TODO.md` lists unfinished operations and
+observation windows; `decisions.md` records current design policies.
 
 Use GitHub Flow: fork if needed, branch from current `main`, make focused commits
 with informative bodies, and open a PR. There is no permanent `dev` branch.
@@ -35,7 +35,7 @@ python -m pytest
 Add regression tests, explain the problem/solution and operational impact, and
 keep unrelated cleanup separate. Do not weaken tests to make CI pass. PRs require
 an up-to-date branch and green `Python checks`, `PostgreSQL tests` and `Production
-containers` checks. The last job exercises native ARM64 with disposable services,
+containers` checks. The last job exercises native AMD64 with disposable services,
 not live GitHub or production secrets. A merge is not a deployment.
 
 Fork PRs must not need secrets/elevated permissions. Never run untrusted PR code

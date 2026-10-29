@@ -1,30 +1,28 @@
-# First OCI deployment
+# Clean-host deployment
 
-This is the operator handoff for the already provisioned **Ubuntu 24.04 Minimal,
-AMD64 E2.1.Micro, 1 GB RAM, 100 GB boot volume**. Repository CI and a published
-release do not configure OCI, send real alerts, or establish a live website.
-Complete the steps below yourself over the working Bastion connection.
+Use this reference for a new **Ubuntu 24.04 Minimal AMD64 E2.1.Micro** host
+(1 GB RAM, 100 GB boot volume). The existing production installation is live;
+its verified release/digest and results are in the
+[operations record](OPERATIONS.md#deployed-release). [TODO.md](../TODO.md) tracks
+only unfinished work.
 
-Verified release: **v0.1.1**. Its publication and independent local verification
-completed; verify the signed tag and assets again before installing:
-
-```text
-Signed source commit: 94b9c94ff0232b3f3d8f0e8d5d7c25b902af548b
-Application image: ghcr.io/tanishtuteja/gh-random@sha256:c5a6732f67d445be36eaaa00ded7706415982b13a5f3ad10b68eea7ca991e697
-```
-
-Do not use the older ARM64-only v0.1.0 image on this VM. Do not build an image
-on the micro VM or deploy from moving `main`. Use the exact image and matching
-deployment archive attached to the verified release.
+For replacement of an existing host, start with
+[complete VM recovery](OPERATIONS.md#complete-vm-loss-or-replacement): restore
+and test the catalog before cutover. Do not enable two production pullers against
+the same approval queue during a rehearsal. Empty-database bootstrap is not a
+restore procedure.
 
 ## Before the first deployment
 
-1. **Finish host and access setup.** Keep the working Bastion SSH path and a
-   second verified administrative session before removing an obsolete public
-   key. Patch Ubuntu and its CA certificates; install Docker Engine/Compose
-   from the official Docker repository, Python 3.12+, OpenSSL, and a maintained
-   official GitHub CLI **2.97.0 or newer**. The application needs no host uv,
-   virtualenv, PostgreSQL server/client, or pgAdmin. Confirm the non-secret facts:
+1. **Prepare the host and private access.** Confirm Always Free eligibility and
+   tenancy-wide quotas before provisioning. Patch Ubuntu/CA certificates and
+   install official Docker Engine/Compose, Python 3.12+, OpenSSL, GitHub CLI
+   2.97.0+ with the [required attestation flags](AUTOMATION.md), the pinned age
+   tool and official OCI CLI. No host uv, application virtualenv, PostgreSQL
+   server/client or pgAdmin is required. Keep working Bastion access and prove a
+   replacement administrative connection before removing an old key.
+
+   Run these inspection commands unchanged; no replacements are needed:
 
    ```sh
    uname -m
@@ -39,173 +37,105 @@ deployment archive attached to the verified release.
    gh attestation verify --help
    ```
 
-   Expect `x86_64`; verify the required attestation flags listed in
-   [AUTOMATION.md](AUTOMATION.md). Follow [LOW_MEMORY.md](LOW_MEMORY.md): one web
-   worker, tuned PostgreSQL, and the shipped memory ceilings. Optional emergency
-   swap does not increase those ceilings or replace the live capacity test.
+   Expect `x86_64`. Follow [LOW_MEMORY.md](LOW_MEMORY.md): one web worker,
+   tuned PostgreSQL and bounded resources. Build images elsewhere; preserve
+   existing data volumes when applying settings.
 
-2. **Choose the public hostname and finish networking.** Use a free subdomain
-   you control or an existing domain; OCI does not supply a free registered
-   domain. One free option is [DuckDNS](https://www.duckdns.org/faqs.jsp): choose
-   an available subdomain in your own account and set its IPv4 address to the VM.
-   Keep its DNS update token private. Set the A record to the VM's current public
-   IP and keep it updated.
-   Allow public TCP 80/443 in OCI and the host firewall; add UDP 443 only for
-   HTTP/3. Preserve Bastion-private SSH access. Keep public SSH, PostgreSQL,
-   pgAdmin and Docker API ports closed. Do not add an AAAA record without working
-   IPv6 networking and firewall rules. Check what is actually reachable from an
-   independent connection; Docker port publishing needs explicit review.
+2. **Configure DNS and network isolation.** Point a controlled hostname's A record
+   at the VM's public IPv4 address; keep any DNS-update token private. Permit
+   public TCP 80/443 and UDP 443 only if using HTTP/3. Permit SSH through Bastion
+   with a restricted client CIDR, not public SSH. Keep PostgreSQL, pgAdmin and
+   Docker API private. Check external reachability as well as OCI/host rules;
+   Docker port publishing needs explicit review. Publish AAAA only after IPv6
+   networking and firewall rules are tested.
 
-3. **Obtain and verify the release before executing it.** Download all four
-   v0.1.1 assets into a fresh version-specific staging directory in your trusted
-   operator environment. Check
-   `SHA256SUMS` and the archive's GitHub attestation against the independently
-   verified signed tag's commit, version ref and release workflow. Follow the
-   [release verification procedure](../README.md#verifying-a-published-release).
-   The verified metadata must say `linux/amd64`.
-   Transfer the verified archive/files through Bastion, preserving their verified
-   hashes. Keep immutable release files under `/opt/gh-random/releases/v0.1.1`;
-   do not edit the packaged files. The initial verification can use your already
-   authenticated operator workstation; the installed VM puller later supplies
-   short-lived App authentication for its own CLI checks. Public GHCR needs no
-   registry password.
+3. **Verify the release before execution.** Obtain all four assets for a trusted
+   signed release in a fresh staging directory. Follow the
+   [release verification procedure](../README.md#verifying-a-published-release):
+   verify SHA256SUMS, signed source, archive/image attestations and matching
+   metadata. Expect `linux/amd64`; v0.1.0 is ARM64-only and predates the CA fix.
+   Transfer files through Bastion with checked hashes, retain version-specific
+   immutable release directories, and use the exact digest with its matching
+   bundle. Never deploy files from moving `main` with a released image.
 
-4. **Configure the crawler and deployment GitHub Apps.** Keep the existing public-search
-   crawler App and its private key. Create a separate deployment App installed
-   only on `TanishTuteja/GH-Random`, as described in
-   [AUTOMATION.md](AUTOMATION.md#manual-vm-setup-after-provisioning):
-   **Contents read, Actions read, Attestations read, Deployments read/write**;
-   Metadata read is implicit. This same deployment App also publishes telemetry
-   using a token narrowed to Deployments write.
-   Do not broaden the crawler App's permissions. Neither App needs a visitor's
-   GitHub login or OAuth authorization flow.
+4. **Configure separate GitHub Apps.** Retain the crawler's search App; use a
+   separate repository-scoped deployment App with the permissions and bot
+   identity in [AUTOMATION.md](AUTOMATION.md#manual-vm-setup-after-provisioning).
+   Configure the protected production environment's App/bot variables there.
+   The deployment App also publishes telemetry using a token narrowed to
+   Deployments write. Neither App requires a visitor login.
 
-   Record the deployment App's client ID, numeric App ID, installation ID and
-   bot user ID in the designated private configuration fields. Set production
-   environment variables `PRODUCTION_DEPLOYMENT_APP_ID` and
-   `PRODUCTION_DEPLOYMENT_CREATOR_ID`; the latter is the **bot user ID**.
-   [AUTOMATION.md](AUTOMATION.md) explains how to obtain and verify each value.
+5. **Install private configuration.** Keep `/etc/gh-random` root-owned mode 0700
+   and its configuration/key files mode 0600, outside the release. Copy matching
+   templates and replace their placeholders privately. Configure:
 
-5. **Create private production configuration.** Use root-owned mode `0700`
-   `/etc/gh-random` and mode `0600` configuration/key files outside the release.
-   Copy the matching release's templates, replace placeholders and keep:
+   - `compose.env`, `postgres.env`, `app.env`, `crawler.env`, `caddy.env` and the
+     crawler PEM: matching DB credentials, URL-encoded SQLAlchemy passwords,
+     hostname/allowlist, exact image digest, private paths and micro limits.
+   - `pull.json` and deployment PEM; `alerts.json` and SMTP password;
+     `backup.json` and public age recipients; `telemetry.json`.
 
-   | Configuration | Main values to supply |
-   | --- | --- |
-   | `compose.env` | Exact released image digest; absolute private file/key paths; shipped micro limits |
-   | `postgres.env`, `app.env`, `crawler.env` | Matching database name/user/password; SQLAlchemy URLs use hostname `database`; encode reserved password characters |
-   | `app.env`, `caddy.env` | Host allowlist, matching Caddy hostname and ACME email |
-   | Crawler PEM and `crawler.env` | Existing crawler App credentials and installation |
-   | `pull.json` and separate deployment PEM | Dedicated deployment App, bot ID, origin, stable state/release paths |
-   | `alerts.json`, `smtp-password` | Private sender/recipients and VM SMTP credential |
-   | `backup.json`, `backup-recipients.txt` | Private bucket/prefix, installed tool paths, public age recipient |
-   | `telemetry.json` | Deployment App identity and later the stable telemetry anchor IDs |
+   Follow [automation](AUTOMATION.md), [backups](BACKUPS.md) and
+   [monitoring](MONITORING.md) for each configuration's fields. Keep recoverable
+   private configuration independently of the VM. For the immutable v0.1.1
+   bundle, set private `WEB_MEMORY=192m` as required by [LOW_MEMORY.md](LOW_MEMORY.md).
+   Ensure `pull.json.backup_dir`
+   and `backup.json.archive_dir` match, normally
+   `/var/backups/gh-random/encrypted`. Do not publish credentials or raw logs.
 
-   Keep passwords, PEM contents, SMTP credentials, database URLs and raw logs
-   private. Do not paste them into chat, Git, issue bodies, commands in shell
-   history or public workflow inputs. Record recoverable private configuration
-   independently of the VM; losing the VM must not lose every recovery copy.
-   Ensure `pull.json`'s `backup_dir` matches `backup.json`'s `archive_dir`
-   exactly; use `/var/backups/gh-random/encrypted` consistently with the shipped
-   encrypted backup policy. A mismatch fails before deployment.
+6. **Prepare encrypted off-site backups.** Follow [BACKUPS.md](BACKUPS.md#install-and-configure-manual-vm-work).
+   Generate the age recovery identity on the recovery machine; retain independent
+   offline copies and install only public recipients on the VM. Configure a
+   private bucket and scoped instance-principal create/read access within free
+   quotas. Keep remote automatic deletion off. Even initial empty-database
+   deployment requires an encrypted uploaded/read-back-verified pre-migration
+   backup; the catalog restore test follows the first successful crawl.
 
-6. **Configure encrypted off-site backups before deploying.** Follow
-   [BACKUPS.md](BACKUPS.md#install-and-configure-manual-vm-work). Generate the age
-   recovery identity on your recovery machine and preserve two independent
-   offline copies; put only its public recipient on the VM. Install the pinned
-   age tool and official OCI CLI. Create a private Standard Object Storage
-   bucket/prefix within confirmed free quotas and configure a scoped dynamic
-   group/instance-principal policy for upload and read-back, without general
-   overwrite/delete permissions. Do not configure a lifecycle rule that can
-   expire every recovery copy during a long outage. Even the first empty-database
-   deployment takes an encrypted uploaded/read-back-verified pre-migration backup.
-   No live database is available yet, so the full catalog backup/restore test
-   follows deployment and the first crawl.
+7. **Verify real email delivery.** Configure private TLS-only SMTP and install
+   the matching notifier/failure-handler units using the
+   [email instructions](../README.md#email-failure-alerts-and-missing-success-monitoring).
+   Confirm the test message arrives in the inbox. Keep backup freshness checks
+   disabled until the managed backup succeeds and leave `tls_host` unset until
+   HTTPS works. Credentials and recipient addresses stay private.
 
-7. **Configure and test email before enabling services.** Personal Gmail can
-   provide low-volume SMTP alerts when the account supports App Passwords.
-   Follow the [email guide](../README.md#email-failure-alerts-and-missing-success-monitoring):
-   use 2-Step Verification, `smtp.gmail.com`, port 465/TLS, and the full Gmail
-   address as username/sender. Use separately revocable App Passwords for the VM
-   and external GitHub monitor; never the normal account password. Install the
-   matching notifier and failure-handler units. The notifier's `test` command
-   sends a real email: confirm inbox arrival, not just a zero exit status.
-   Leave `monitor_backups` false until the real backup worker succeeds and
-   `tls_host` unset until HTTPS works.
-
-8. **Install the approved outbound puller.** Follow
-   [AUTOMATION.md](AUTOMATION.md), including the reviewed bootstrap's relative
-   paths under `/opt/gh-random-automation`. Create its private state/release/backup
-   directories and install the matching units. Set `allow_initial_bootstrap`
-   true **only for this first empty-database deployment**; encrypted backup and
-   alert configuration remain required. Verify/enable `gh-random-pull.timer`.
-   This does not require public SSH, an Actions runner on the VM, a registry
-   token, or a personal GitHub CLI login on the VM.
+8. **Install the outbound puller.** Follow [AUTOMATION.md](AUTOMATION.md), including
+   bootstrap compatibility fixes for v0.1.1, private directories and matching
+   systemd units. Set `allow_initial_bootstrap=true` only for the first deployment
+   with a missing database service; backups and alerts remain required. Public
+   GHCR needs no registry password. The host needs no public SSH, deployment
+   webhook, self-hosted Actions runner or personal GitHub CLI login.
 
 ## First installation, before announcing the site
 
-9. **Approve v0.1.1 through the deployment workflow.** On GitHub, run
-   **Production deployment** on `main`, input tag `v0.1.1`, and approve the
-   protected production environment. Alternatively, from your authenticated
-   operator workstation:
+9. **Approve and verify deployment.** Dispatch **Production deployment** on `main`
+   for the verified release tag and approve the protected production environment;
+   see [deployment commands](../README.md#deploying-a-verified-release). Observe
+   the actual VM result and public HTTPS, not just the queue job. Set
+   `allow_initial_bootstrap=false` after success. For failures use
+   [OPERATIONS.md](OPERATIONS.md); preserve locks, migration history and volumes.
 
-   ```sh
-   gh workflow run deploy.yaml --repo TanishTuteja/GH-Random --ref main -f tag=v0.1.1
-   ```
+10. **Publish the first supervised catalog.** Install matching crawler units and
+    start `gh-random-crawler.service`; web startup does not crawl. Watch resources,
+    progress and cleanup, and verify discovery from the active catalog. Enable
+    the crawler timer after success: 00/06/12/18 UTC, or
+    05:30/11:30/17:30/23:30 IST. Managed runs update freshness markers.
 
-   Observe Actions, the GitHub Deployment status and the VM's puller journal.
-   A successful queue job alone is not a deployed website. Only proceed once
-   the VM reports success and actual HTTPS checks pass. Then set
-   `allow_initial_bootstrap` back to false. For failures, use
-   [OPERATIONS.md](OPERATIONS.md); do not bypass locks or replay migrations.
+11. **Enable verified backups and monitoring.** Complete encrypted upload/full
+    read-back and restore an off-site archive into a separate recovery database.
+    Check schema, counts and discovery. Use a disposable recovery host rather
+    than a parallel restore stack on the micro. Enable the 05:15 UTC/10:45 IST
+    backup timer and local freshness/disk/TLS monitoring after success.
+    Follow [MONITORING.md](MONITORING.md) for the stable telemetry anchor,
+    protected monitoring secrets, existing issue #26 and independent availability
+    monitor. Keep `MONITORING_ENABLED=false` until real configuration and
+    failure/recovery inbox tests pass, then enable the schedule.
 
-10. **Run the first supervised full crawl.** Install the release-matching
-    crawler bootstrap/service and tested email handler. Start
-    `gh-random-crawler.service` explicitly; merely starting web never crawls.
-    Watch memory, CPU pressure, duration and the journal through Bastion. Confirm
-    an active catalog and working discovery during the crawl. Keep the six-hour
-    crawler timer disabled until this first successful run is verified, then
-    enable it. The slots are 00/06/12/18 UTC, or 05:30/11:30/17:30/23:30 IST.
-    Use the managed service so freshness watermarks are updated.
+12. **Record host acceptance.** Check page/API/filter behavior, intended public
+    ports, crawl rotation, backup/restore, alerts and reboot recovery. Measure
+    resources and latency using [LOW_MEMORY.md](LOW_MEMORY.md#capacity-checks).
+    Resolve OOMs, sustained swapping or five-hour crawl timeouts before relying
+    on the host. Record results in [OPERATIONS.md](OPERATIONS.md#acceptance-record)
+    and keep unverified tasks/observation windows in [TODO.md](../TODO.md).
 
-11. **Complete backup and monitoring acceptance.** Run the encrypted backup
-    service and verify actual OCI upload plus full read-back. Restore a trusted
-    off-site copy into a separate database on a disposable recovery host or in a
-    deliberate maintenance window; do not add a parallel restore stack to this
-    1 GB VM. Check schema, counts and discovery. Then enable the daily backup
-    timer (05:15 UTC / 10:45 IST), `monitor_backups`, disk/TLS checks and the local
-    monitor timer. Test real failure/recovery emails without destructive changes
-    to the production data.
-
-    Follow [MONITORING.md](MONITORING.md): reuse the deployment App, create one
-    stable telemetry anchor, install telemetry publishing and configure the
-    protected `monitoring` environment's SMTP secrets. Reuse existing issue #26
-    and its variable; do not create a second ledger. Keep
-    `MONITORING_ENABLED=false` until the hostname, fresh telemetry and independent
-    inbox tests work, then enable and verify outage/staleness/recovery handling.
-
-12. **Accept the real micro VM before public launch.** Follow
-    [LOW_MEMORY.md](LOW_MEMORY.md#before-public-launch) and the
-    [operations acceptance record](OPERATIONS.md#acceptance-record). Verify HTTPS,
-    filters/Any, repeat avoidance/single-result fallback and no-result behavior;
-    confirm only intended ports/routes are public. Rehearse reboot recovery,
-    timer retry/catch-up and successful sort rotation. Measure actual crawl
-    duration, memory/swap/OOMs, response latency and disk growth over retained
-    generations. Do not launch with OOM kills, sustained swapping or crawls that
-    miss their five-hour window. Record the actual URL, deployed commit/digest,
-    last tested restore and monitoring results in the deployment checklist.
-
-Read-only observations after services exist:
-
-```sh
-sudo systemctl list-timers 'gh-random-*'
-sudo systemctl status gh-random-pull.timer gh-random-crawler.service gh-random-backup.service
-sudo docker stats --no-stream
-free -h
-vmstat 1 10
-sudo journalctl -k --since today --grep='oom\|Out of memory\|Killed process'
-```
-
-Keep the exact current/previous release files, recovery keys and good backups.
-Never remove PostgreSQL volumes to apply settings. Production pgAdmin and a
-custom paid domain are optional and are not required for first launch.
+Preserve current/previous release files, trusted backups and recovery keys.
+Optional pgAdmin and a custom paid domain are not required for deployment.

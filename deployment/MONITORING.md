@@ -6,12 +6,10 @@ backups. A free UptimeRobot monitor independently checks discovery availability,
 including when GitHub's scheduler is delayed. Neither adds an application route;
 the existing `/` and `/api/random-repository` remain the public checks.
 
-The first live setup and failure/recovery inbox test passed on 2026-10-28;
-the external schedule is enabled. See the [acceptance record](OPERATIONS.md#live-acceptance--2026-10-28)
-for evidence and remaining outage/staleness checks. For a new installation,
-keep `MONITORING_ENABLED=false` until the hostname, telemetry identity, SMTP
-credentials and inbox delivery are verified. Enabling it with missing
-configuration fails the workflow; it never silently reports a healthy site.
+See the [operations record](OPERATIONS.md#live-acceptance--2026-10-28) for live
+acceptance and [TODO.md](../TODO.md) for remaining work. On a new installation,
+keep `MONITORING_ENABLED=false` until hostname, telemetry identity, SMTP and
+inbox delivery are verified. Missing configuration fails the enabled workflow.
 
 ## What is checked
 
@@ -68,32 +66,23 @@ Only the explicitly configured numeric bot identity may author the anchor/status
 The independent checker runs at minutes `07,22,37,52` each UTC hour, away from the
 top-of-hour scheduling peak. This is not a guaranteed 15-minute SLA: GitHub can
 delay/drop scheduled runs, disable inactive public-repository schedules after 60
-days, or suffer its own outage. On October 28, 2026, consecutive scheduled runs
-were created at 08:43:29 and 15:29:20 UTC, a gap of 6 h 45 min 51 s despite the
-configured schedule. Their short job/runner queue times do not explain the
-missing schedule events, and no provider-side cause was established. Review run
-history regularly, enable Actions failure notifications and re-enable after
-inactivity. Independent availability coverage is configured below; freshness
-checks still depend on GitHub execution and the shared SMTP provider.
+days, or suffer its own outage. Measured schedule gaps motivated the independent
+availability check below. Review run history, enable Actions failure notifications
+and re-enable after inactivity. Freshness checks still depend on GitHub execution
+and the shared SMTP provider.
 
 ## Independent five-minute availability
 
-UptimeRobot monitor `804462089` checks
-`https://ghrandom.duckdns.org/api/random-repository` using HTTP/S on the Free plan
-at a configured five-minute interval. Active/Up status, the Free plan and enabled
-owner email were read back; the operator confirmed its test notification arrived.
-No payment method or paid credits were configured. Keep the account's login and
-alert address private, and review plan/monitor settings if the provider changes
-its free offering. The configured interval is not a contractual detection SLA.
+UptimeRobot checks `https://ghrandom.duckdns.org/api/random-repository` using
+HTTP/S on the Free plan at a configured five-minute interval. Keep the account's
+login and alert address private, and review settings if the free offering
+changes. The configured interval is not a contractual detection SLA.
 
 This is a basic availability supplement: it does not replace GitHub's JSON/body
 validation, telemetry-author checks or crawl/backup freshness limits. Review both
 providers during an incident. A reachable site with stale crawling may pass the
-availability check while failing the GitHub monitor. A controlled Caddy-only
-outage on October 29 exercised actual public-site failure/recovery; the operator
-confirmed both providers' failure/recovery email pairs arrived. Database and
-crawler remained running. Complete VM/network loss remains a separate recovery
-scenario.
+availability check while failing the GitHub monitor. Validate both providers'
+actual failure/recovery inbox delivery during controlled acceptance.
 
 ## Private VM setup (after OCI exists)
 
@@ -242,17 +231,9 @@ telemetry. Then, in a controlled maintenance window:
 5. Verify Actions failure emails and issue subscriptions separately so broken
    SMTP/configuration can still be noticed. Review schedule history regularly.
 
-Do not mark live external monitoring/SMTP acceptance complete from repository CI.
-Repository tests use mocked GitHub contracts plus real loopback TLS HTTPS/SMTP.
-The October 28 live acceptance additionally used isolated VM state with a real
-SMTP rejection/retry, configured-provider delivery, and operator receipt of eight
-stale-crawl/stale-backup/disk/TLS failure/recovery messages. External freshness
-cases used in-memory API fixtures; production telemetry, the incident ledger,
-host clock, disk contents and certificate were unchanged. The earlier controlled
-invalid-origin GitHub run and recovery exercised the real Actions/issue/email
-path. The October 29 Caddy outage additionally verified real public-site failure
-and recovery through both providers, with all four emails confirmed received.
-These checks do not establish complete VM-loss recovery or future renewal.
+CI uses mocked GitHub contracts plus real loopback TLS HTTPS/SMTP. Record live
+inbox delivery and the scope of injected faults separately in the operations
+record; these do not establish complete VM-loss recovery or future renewal.
 
 References: [GitHub deployment status API](https://docs.github.com/en/rest/deployments/statuses),
 [scheduled workflow limits](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule),

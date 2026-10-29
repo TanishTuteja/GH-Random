@@ -1,18 +1,11 @@
 # Roadmap
 
-This file tracks product enhancements and future improvements that are not part
-of the current implementation.
+Future product enhancements. Remaining operational work is in [TODO.md](TODO.md).
 
 ## Catalog lifecycle
 
-- Review the current rolling-catalog policy after real production crawl data is
-  available. A new staging generation copies active memberships, refreshes each
-  repository rediscovered by the crawl, and retires memberships whose `last_seen`
-  time exceeds the configured three-day retention window when the crawl publishes.
-  Retired and failed snapshots older than seven days are then removed, along with
-  their orphaned repository metadata.
-  Revisit whether that duration should instead be based on successful-crawl counts,
-  elapsed time, or both.
+- Review retention using production crawl data. Evaluate whether repository
+  retirement should depend on elapsed time, successful-crawl counts, or both.
 
 ## Crawl coverage
 
@@ -29,9 +22,3 @@ of the current implementation.
 - Support selecting multiple values within each repository filter. Combine
   selected values with OR within a filter category and AND across categories,
   while retaining `Any` as the no-restriction choice for that category.
-
-## Open-source repository operations
-
-CI, branch/tag protection, Dependabot, contributor files, and workflow security
-are tracked with their completion status in [TODO.md](TODO.md). Keep that
-deployment checklist as the single source of status for repository operations.
