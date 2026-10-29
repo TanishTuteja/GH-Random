@@ -1,9 +1,13 @@
 # GH Random
 
-GH Random discovers random GitHub repositories from a local catalog. GitHub is
-contacted only by a manual, paced crawler. Browser requests read from the last
-successfully published catalog generation, so browsing remains quick and
-predictable even while another crawl is running.
+Discover a random GitHub repository by language, stars, and recent activity.
+[Try GH Random](https://ghrandom.duckdns.org/).
+
+Browser requests read a local PostgreSQL catalog. A separate, paced crawler
+refreshes it every six hours in production; development crawls can also be
+started manually. Browsing continues from the last successfully published
+generation while a new crawl is running. Deployment and acceptance evidence
+is recorded in [the operations guide](deployment/OPERATIONS.md#live-acceptance--2026-10-28).
 
 ## Architecture and catalog behavior
 
@@ -1126,8 +1130,9 @@ monitor manually, and test real alerts/recovery before relying on it.
 
 Use the [production operations runbook](deployment/OPERATIONS.md) for incident
 triage, stuck crawls, failed migrations, disk pressure, credential rotation,
-host maintenance, safe image cleanup and VM replacement. Its live acceptance
-steps still need the real deployment; no production host is configured by CI.
+host maintenance, safe image cleanup and VM replacement. Its dated acceptance
+record distinguishes completed live checks from pending work; CI alone does
+not configure or verify a production host.
 
 Optional production database browsing uses a separate, loopback-only admin
 overlay. See [private production pgAdmin](deployment/PGADMIN.md) for credentials,
@@ -1139,7 +1144,8 @@ lowercase public hostnames, for example `APP_ALLOWED_HOSTS=["example.com"]`.
 Do not include a scheme, path, port, or wildcard. Match `GH_RANDOM_DOMAIN` in
 caddy.env; deployment preflight refuses a missing/nonmatching allowlist. Local
 defaults allow localhost, loopback IPs and TestClient's testserver, not arbitrary
-public names. Unknown Host headers receive HTTP 400, without a www redirect.
+public names. The web application rejects unknown Host headers with HTTP 400;
+unmatched public Caddy hosts do not reach the application.
 
 Caddy alone publishes host ports. Web joins only the internal `proxy` and
 `backend` networks, not the internet-facing `edge` network. Production Uvicorn
@@ -1171,7 +1177,7 @@ These are initial ceilings, not reserved capacity or measured sizing guarantees.
 Memory exhaustion can kill a process; inspect Docker State.OOMKilled and review
 limits against real crawl/backup traffic and the VM's RAM before launch.
 The current defaults target the 1 GB E2 micro: one web worker, 256 MiB database,
-128 MiB web, 192 MiB crawler, 128 MiB migration and 64 MiB Caddy. PostgreSQL
+192 MiB web, 192 MiB crawler, 128 MiB migration and 64 MiB Caddy. PostgreSQL
 memory/connection settings and `WEB_WORKERS` are also configurable in compose.env.
 Read [LOW_MEMORY.md](deployment/LOW_MEMORY.md) for tuning, test limits and the
 required live acceptance; do not use the ARM64 v0.1.0 image on this host.

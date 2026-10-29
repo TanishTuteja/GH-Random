@@ -1008,6 +1008,10 @@ staleness/retry delivery, resource growth and replacement-VM recovery unchecked
 until separately verified. The operator retains all OCI/SSH/private setup work;
 the agent did not access the VM, and full recovery time has not been measured.
 
+This records the initial handoff's scope. The operator subsequently explicitly
+authorized remote VM acceptance work; the later record below supersedes that
+access restriction without changing the historical first-deployment evidence.
+
 ## 2026-10-28 — Give the web worker measured container headroom
 
 Live acceptance found a kernel OOM kill of Uvicorn at 19:22:35 UTC under the
@@ -1022,4 +1026,43 @@ Apply the private VM setting by recreating only web from the same verified
 v0.1.1 digest. Preserve the database, active crawler, application code, version,
 tags and published release artifacts. Continue observing live memory and OOM
 counters before claiming sustained capacity.
+
+## 2026-10-29 — Supplement GitHub monitoring with independent availability
+
+The configured fifteen-minute GitHub cron had a measured 6 h 45 min 51 s gap
+between scheduled runs on October 28. Runner queue/job duration did not explain
+it, and no cause was established. Keep GitHub's strict response validation and
+trusted host/crawl/backup watermarks, but treat schedule delivery as best effort.
+
+With explicit operator authorization, add a Free-plan UptimeRobot HTTP/S monitor
+for the existing discovery API every five minutes. Verify active/Up state and
+actual test-email receipt without adding a payment method or exposing private
+contact details. This supplies provider-independent basic availability checks;
+it does not duplicate JSON validation/freshness monitoring or guarantee an SLA.
+
+Record the directly verified VM hardening, measured web-memory correction and
+isolated failure/recovery email acceptance in OPERATIONS.md. Separate injected
+threshold/fixture checks from actual outages: preserve production watermarks,
+clock, certificate and disk contents. The operator confirmed all eight acceptance
+emails and OCI MFA. Keep the deferred independent offline key copy, managed
+systemd-child interruption, future renewal, multi-day retention/capacity
+observation and full replacement-host RPO/RTO open until their own evidence exists. Leave
+remote backup deletion disabled and review usage monthly; never let an age-only
+rule expire every usable backup during a long outage.
+
+The later controlled reboot followed six completed production crawls and a fresh
+verified off-site backup. It preserved the exact catalog/schema/volume/image and
+restored all five timers automatically. No six-hour slot was missed; do not use
+this as evidence of production catch-up after prolonged downtime.
+
+## 2026-10-29 — Refresh planner statistics after initial catalog population
+
+Live broad discovery took 10.807 seconds locally. A bounded query plan estimated
+1,181 matching memberships instead of the actual 202,688 and chose repeated
+repository index lookups. Refreshing the six-row `catalog_generations` table's
+statistics changed the join plan; the same full request then took 1.973 seconds.
+Record this as host database maintenance with a repeatable runbook command,
+preserving application code, schema and the immutable v0.1.1 release. Continue
+measuring catalog growth and request latency; the one-time statistics refresh
+does not establish a sustained throughput guarantee.
 

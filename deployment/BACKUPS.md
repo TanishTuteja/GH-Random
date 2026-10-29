@@ -8,6 +8,8 @@ Those remain deployment acceptance tasks for the operator.
 The first production catalog backup and independent off-site database/app
 restore passed on 2026-10-28; see the [acceptance record](OPERATIONS.md#live-acceptance--2026-10-28).
 Replacement-VM recovery and a second independent offline key copy remain open.
+The operator explicitly deferred that second copy; C: and D: partitions on the
+same physical disk do not supply independent recovery-key redundancy.
 
 ## Policy and trust
 
@@ -29,6 +31,17 @@ Replacement-VM recovery and a second independent offline key copy remain open.
   that can expire every recovery copy during a long backup outage.** Use an
   independently supervised retention process or preserve a protected recovery
   tier before enabling remote expiration. Test any retention rule explicitly.
+- Review remote usage monthly and after major catalog growth. Inventory showed
+  five remote objects totaling 41,892,828 bytes on October 29, 2026, including the
+  small setup-test object. This is a dated measurement, not a quota guarantee.
+  Confirm tenancy-wide free quotas and count other buckets/versions before
+  assigning a storage budget. Review exact receipts and retain at least two
+  known-good off-site copies before any operator-approved pruning; a successful
+  upload alone does not establish that an older copy is safe to discard.
+  Oracle currently documents a 20 GB combined allowance after a trial ends;
+  verify the account/tier rules and all tenancy usage in the
+  [Always Free documentation](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm).
+  A small project-prefix inventory does not establish tenancy-wide eligibility.
 - A backup unit is limited to 40 minutes plus a 90-second shutdown budget. Each
   transfer/encryption command defaults to 900 seconds; uploads default to a
   512 MiB ceiling (configurable up to 2 GiB). Review these against measured data
