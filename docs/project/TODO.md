@@ -14,7 +14,8 @@ the catalog to age.
 - [ ] Rehearse a clean replacement host using an actual off-site backup,
   recovered private configuration/credentials and DNS recovery. Verify discovery,
   services, scheduling and alerts; measure data loss and total recovery time.
-  Recover private configuration independently of the surviving VM. Before
+  Use the independently verified database and encrypted configuration copies;
+  configuration decryption and off-site read-back are already verified. Before
   provisioning, confirm actual free host capacity and remaining storage including
   retained volume backups; a service-limit allowance is not a capacity guarantee.
   Keep the account free and follow

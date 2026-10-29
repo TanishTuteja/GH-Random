@@ -49,6 +49,30 @@ detects corruption, but **does not identify the sender**: someone with a public
 recipient can create a different archive. Trust the source/storage account and
 verify the expected checksum; `--trust-backup` is an explicit recovery decision.
 
+## Private configuration recovery
+
+Database archives intentionally exclude credentials and host configuration.
+Keep a separate age-encrypted snapshot of the root-private `/etc/gh-random`
+files, including the GitHub App keys, SMTP secret, database credentials and
+deployment/monitor settings. The age recovery identity stays off the VM.
+
+The manually verified configuration package uses format
+`gh-random-private-config-v1`: a tar containing regular files beneath
+`gh-random-config/` and `recovery-manifest.json` with member sizes/checksums.
+Snapshot only bounded, root-owned private regular files; reject links and private
+age identities. Encrypt before writing an archive to disk. Retain ciphertext
+and trusted checksum receipts outside the VM, in private recovery storage and
+the private bucket's separate `gh-random/config-recovery/` prefix.
+
+Before restoration, verify the trusted ciphertext SHA-256, age authentication,
+member allowlist and every manifest checksum in a private offline environment.
+Restore only the expected regular files into a fresh root-owned mode-0700
+configuration directory, with files mode 0600. Do not use the PostgreSQL archive
+unpacker for this separate format or blindly extract an unverified tar as root.
+Refresh this snapshot after credential/configuration changes; verify the new
+independent copy before retiring one needed for recovery. No configuration
+snapshot schedule or automatic remote pruning has been installed.
+
 ## Install and configure (manual VM work)
 
 From a trusted, verified matching release on the VM:
