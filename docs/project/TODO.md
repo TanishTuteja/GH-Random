@@ -1,6 +1,6 @@
 # Remaining work
 
-Reviewed 2026-10-29. This file contains unfinished operational work only.
+Reviewed 2026-10-30. This file contains unfinished operational work only.
 Product enhancements belong in [ROADMAP.md](ROADMAP.md); completed production
 checks are recorded in the [operations guide](../operations/OPERATIONS.md#live-acceptance--2026-10-28).
 
@@ -9,37 +9,24 @@ checks are recorded in the [operations guide](../operations/OPERATIONS.md#live-a
 Access and free-capacity prerequisites are noted below; these tasks do not need
 the catalog to age.
 
-### OCI and network verification (console access)
+### Replacement-host recovery (private material, OCI and SSH access)
 
-- [ ] Read back the effective VCN security-list/NSG rules: public TCP 80/443,
-  UDP 443 if HTTP/3 is enabled, and SSH only from the Bastion private endpoint.
-  Confirm PostgreSQL, pgAdmin and Docker API have no public ingress. Check IPv6
-  rules before publishing any AAAA record.
-- [ ] Read back the Bastion client CIDR allowlist, session lifetime and private
-  SSH ingress rule; verify they match the working restricted access path.
-- [ ] Confirm tenancy-wide Always Free eligibility, quotas, storage/network
-  usage and cost alerts. Count other resources, object versions and buckets.
-  Budget notifications do not cap spending; keep the account free.
-- [ ] Confirm whether the public IP is ephemeral or reserved and document the
-  DuckDNS update/recovery procedure, with account recovery material kept private.
-
-### Host and recovery rehearsals (SSH access)
-
-- [ ] Verify the externally observed client address reaches the app through
-  Caddy correctly, including rejection of spoofed forwarded headers.
-- [ ] Exercise managed crawler interruption: confirm only the owned Docker
-  child is cleaned up, the active catalog remains available and a subsequent
-  normal crawl starts correctly. Use controlled, isolated resources where possible.
-- [ ] Rehearse missed-slot catch-up with a disposable persistent timer on the
-  actual host. CI already covers this behavior; preserve normal crawl scheduling.
 - [ ] Rehearse a clean replacement host using an actual off-site backup,
   recovered private configuration/credentials and DNS recovery. Verify discovery,
   services, scheduling and alerts; measure data loss and total recovery time.
-  Confirm free capacity before provisioning another host. Follow
+  Recover private configuration independently of the surviving VM. Before
+  provisioning, confirm actual free host capacity and remaining storage including
+  retained volume backups; a service-limit allowance is not a capacity guarantee.
+  Keep the account free and follow
   [the recovery runbook](../operations/OPERATIONS.md#complete-vm-loss-or-replacement).
 
 ## Needs observation time or a real event
 
+- [ ] If regional connection timeouts recur, capture contemporaneous network
+  evidence from the affected monitoring locations. The October 29 incident
+  recovered automatically after 5m 8s; host/application logs showed no crash,
+  restart or OOM and other clients received 200 responses during the window.
+  The underlying reachability failure remains unexplained.
 - [ ] After the three-day window, check that newly published active memberships
   exclude repositories not rediscovered within retention. Older retained
   generations may still reference those repositories.
