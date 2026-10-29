@@ -20,8 +20,7 @@ coordinated disclosure instead of publishing a working exploit during assessment
 
 ## Supported versions and updates
 
-Before the first release, the default branch is maintained. After releases exist,
-only the latest stable release receives security fixes; older versions should
+Only the latest stable release receives security fixes; older versions should
 upgrade. A release is not a security certification. Operators must also patch
 hosts/Docker/reviewed service images, protect secrets and recovery keys, and
 maintain working alerts/tested recovery using the operations runbooks.

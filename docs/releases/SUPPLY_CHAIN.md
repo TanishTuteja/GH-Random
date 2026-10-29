@@ -71,22 +71,17 @@ all require `linux/amd64`. This is an explicit target change, not a multi-platfo
 release policy. The already published `v0.1.0` remains ARM64-only: its signed tag,
 image digest and deployment assets must not be changed or used on this VM.
 Use its matching source verifier to inspect that historical release; the current
-verifier deliberately rejects ARM64 images. A new signed release and verified
-AMD64 digest are required before deployment.
+verifier deliberately rejects ARM64 images. Use a verified signed AMD64 release
+and matching bundle for deployment; the current production snapshot is in the
+[operations record](../operations/OPERATIONS.md#deployed-release).
 
 Tests construct content-addressed fixture graphs, including tampered descriptor
 contents, wrong image/platform/source/subjects, missing inventory/materials,
 untracked contexts and forged VCS hints. Both legacy and current artifact modes
 are covered without credentials, registry traffic or a database.
 
-The initial local rehearsal built the real ARM64 application from public commit
-`8cda3a04c3b6e71b41e228be811c0ea44d9dedd2` with BuildKit 0.33 and exported a local
-OCI archive, without publishing an image or using a database. Its verified
-SLSA v1 included six materials and its linked SPDX 2.3 inventory contained 672
-packages. Raw authenticated-registry CLI transport/digest checks were separately
-rehearsed read-only against the existing pinned public uv image. Those rehearsals
-do **not** replace checking the actual first published application digest, its
-signed GitHub attestation, release assets or anonymous package access.
+Fixture tests do not replace verification of each published application's real
+digest, signed GitHub attestations, release assets and anonymous package access.
 
 Primary schema/tool references:
 
