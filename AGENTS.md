@@ -20,8 +20,8 @@
 
 ## Documentation and releases
 
-- Track implementation/deployment status in `TODO.md`, product enhancements in
-  `ROADMAP.md`, and material design decisions or unresolved choices in
-  `decisions.md`.
+- Track unfinished implementation/deployment work in `docs/project/TODO.md`,
+  product enhancements in `docs/project/ROADMAP.md`, and material design decisions
+  or unresolved choices in `docs/project/decisions.md`.
 - Merging to `main` does not mean deploying. Production releases use signed
   version tags and the corresponding immutable application image digest.

@@ -106,7 +106,7 @@ plans and latency again after substantial growth rather than raising every limit
 4. After DDL succeeds but restart/smoke fails, the schema may already be new.
    Prefer a reviewed forward fix. Explicit image rollback is allowed only when
    both images work with the **current** schema, with
-   `--confirm-schema-compatible` and the [rollback command](../README.md#explicit-image-rollback). The script
+   `--confirm-schema-compatible` and the [rollback command](../deployment/DEPLOYMENT.md#explicit-image-rollback). The script
    refuses a schema-changing rollback. It never restores data automatically.
 5. If data recovery is required, decrypt and restore a trusted backup into a
    **new database** as described in [BACKUPS.md](BACKUPS.md), inspect the restored
@@ -135,7 +135,7 @@ identified incomplete directory after proving no worker uses it; retain good
 recovery copies. Do not delete PostgreSQL WAL/data files, truncate Docker-managed
 log files, or use `docker system prune --volumes`/`docker volume prune`.
 
-Keep the bounded Docker logs and [resource limits](LOW_MEMORY.md) in place. If additional journal
+Keep the bounded Docker logs and [resource limits](../deployment/LOW_MEMORY.md) in place. If additional journal
 vacuuming is necessary, first preserve incident evidence; vacuuming discards
 history and is a deliberate host-wide action. Expand capacity or remove exact,
 unneeded artifacts. Keep at least two verified backups and recovery keys outside
@@ -263,7 +263,7 @@ cannot establish any of those live-account conditions.
 
 Verified October 28–29, 2026; the final catalog/reboot snapshot below is from
 **October 29 at 08:53:51 UTC**. These are dated results, not a live status page.
-Remaining tasks and observation windows are tracked only in [TODO.md](../TODO.md).
+Remaining tasks and observation windows are tracked only in [TODO.md](../project/TODO.md).
 
 ### Deployed release
 

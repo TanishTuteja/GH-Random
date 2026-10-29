@@ -7,7 +7,7 @@ including when GitHub's scheduler is delayed. Neither adds an application route;
 the existing `/` and `/api/random-repository` remain the public checks.
 
 See the [operations record](OPERATIONS.md#live-acceptance--2026-10-28) for live
-acceptance and [TODO.md](../TODO.md) for remaining work. On a new installation,
+acceptance and [TODO.md](../project/TODO.md) for remaining work. On a new installation,
 keep `MONITORING_ENABLED=false` until hostname, telemetry identity, SMTP and
 inbox delivery are verified. Missing configuration fails the enabled workflow.
 

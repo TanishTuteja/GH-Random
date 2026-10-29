@@ -73,7 +73,7 @@ image digest and deployment assets must not be changed or used on this VM.
 Use its matching source verifier to inspect that historical release; the current
 verifier deliberately rejects ARM64 images. Use a verified signed AMD64 release
 and matching bundle for deployment; the current production snapshot is in the
-[operations record](../deployment/OPERATIONS.md#deployed-release).
+[operations record](../operations/OPERATIONS.md#deployed-release).
 
 Tests construct content-addressed fixture graphs, including tampered descriptor
 contents, wrong image/platform/source/subjects, missing inventory/materials,

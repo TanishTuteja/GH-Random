@@ -3,7 +3,7 @@
 The current target is the provisioned `VM.Standard.E2.1.Micro`: AMD64, about
 952 MiB RAM and a 100 GB boot volume. This replaces the proposed Ampere host
 because A1 capacity was unavailable in Hyderabad. Use the verified AMD64
-`v0.1.1` release and matching bundle in [FIRST_DEPLOYMENT.md](FIRST_DEPLOYMENT.md).
+`v0.1.1` release and matching bundle in [SETUP.md](SETUP.md).
 Published `v0.1.0` is ARM64-only and predates the CA trust fix; do not deploy it.
 
 ## Configuration
@@ -26,7 +26,7 @@ public requests continue. Do not build images on this VM or run development
 tools, parallel restores, pgAdmin, or extra web workers here.
 
 A live OOM at the earlier 128 MiB web ceiling led to the 192 MiB setting; see
-the [acceptance record](OPERATIONS.md#live-acceptance--2026-10-28). For a new
+the [acceptance record](../operations/OPERATIONS.md#live-acceptance--2026-10-28). For a new
 installation using the immutable `v0.1.1` bundle, explicitly set `WEB_MEMORY=192m`
 in the private Compose env file: its original template predates this correction.
 Recreate only web to apply that setting on an existing host. Keep the published
@@ -63,16 +63,16 @@ A cgroup on a faster CI machine does not reproduce the micro VM's shared CPU,
 disk, kernel, Docker daemon, Oracle agent or real repository sizes. Synthetic
 search responses do not establish live GitHub throughput, and a short test
 does not establish multi-day capacity. A failed test blocks release; live
-acceptance and continuing measurements are recorded in [OPERATIONS.md](OPERATIONS.md).
+acceptance and continuing measurements are recorded in [OPERATIONS.md](../operations/OPERATIONS.md).
 
 ## Capacity checks
 
-Use [FIRST_DEPLOYMENT.md](FIRST_DEPLOYMENT.md) for clean-host installation and
-[OPERATIONS.md](OPERATIONS.md) for maintenance/recovery. During full crawls and
+Use [SETUP.md](SETUP.md) for clean-host installation and
+[OPERATIONS.md](../operations/OPERATIONS.md) for maintenance/recovery. During full crawls and
 backups, measure peak usage, swap activity, request latency, crawl duration and
 OOM counters. Repeat after reboot and several days of retained generations;
 the micro's CPU allowance can make a memory-safe job too slow for its window.
-Track unfinished observations in [TODO.md](../TODO.md).
+Track unfinished observations in [TODO.md](../project/TODO.md).
 
 Read-only observations over Bastion:
 

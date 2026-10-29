@@ -3,11 +3,11 @@
 Use this reference for a new **Ubuntu 24.04 Minimal AMD64 E2.1.Micro** host
 (1 GB RAM, 100 GB boot volume). The existing production installation is live;
 its verified release/digest and results are in the
-[operations record](OPERATIONS.md#deployed-release). [TODO.md](../TODO.md) tracks
+[operations record](../operations/OPERATIONS.md#deployed-release). [TODO.md](../project/TODO.md) tracks
 only unfinished work.
 
 For replacement of an existing host, start with
-[complete VM recovery](OPERATIONS.md#complete-vm-loss-or-replacement): restore
+[complete VM recovery](../operations/OPERATIONS.md#complete-vm-loss-or-replacement): restore
 and test the catalog before cutover. Do not enable two production pullers against
 the same approval queue during a rehearsal. Empty-database bootstrap is not a
 restore procedure.
@@ -51,7 +51,7 @@ restore procedure.
 
 3. **Verify the release before execution.** Obtain all four assets for a trusted
    signed release in a fresh staging directory. Follow the
-   [release verification procedure](../README.md#verifying-a-published-release):
+   [release verification procedure](../releases/RELEASES.md#verifying-a-published-release):
    verify SHA256SUMS, signed source, archive/image attestations and matching
    metadata. Expect `linux/amd64`; v0.1.0 is ARM64-only and predates the CA fix.
    Transfer files through Bastion with checked hashes, retain version-specific
@@ -75,15 +75,15 @@ restore procedure.
    - `pull.json` and deployment PEM; `alerts.json` and SMTP password;
      `backup.json` and public age recipients; `telemetry.json`.
 
-   Follow [automation](AUTOMATION.md), [backups](BACKUPS.md) and
-   [monitoring](MONITORING.md) for each configuration's fields. Keep recoverable
+   Follow [automation](AUTOMATION.md), [backups](../operations/BACKUPS.md) and
+   [monitoring](../operations/MONITORING.md) for each configuration's fields. Keep recoverable
    private configuration independently of the VM. For the immutable v0.1.1
    bundle, set private `WEB_MEMORY=192m` as required by [LOW_MEMORY.md](LOW_MEMORY.md).
    Ensure `pull.json.backup_dir`
    and `backup.json.archive_dir` match, normally
    `/var/backups/gh-random/encrypted`. Do not publish credentials or raw logs.
 
-6. **Prepare encrypted off-site backups.** Follow [BACKUPS.md](BACKUPS.md#install-and-configure-manual-vm-work).
+6. **Prepare encrypted off-site backups.** Follow [BACKUPS.md](../operations/BACKUPS.md#install-and-configure-manual-vm-work).
    Generate the age recovery identity on the recovery machine; retain independent
    offline copies and install only public recipients on the VM. Configure a
    private bucket and scoped instance-principal create/read access within free
@@ -93,7 +93,7 @@ restore procedure.
 
 7. **Verify real email delivery.** Configure private TLS-only SMTP and install
    the matching notifier/failure-handler units using the
-   [email instructions](../README.md#email-failure-alerts-and-missing-success-monitoring).
+   [email instructions](DEPLOYMENT.md#email-failure-alerts-and-missing-success-monitoring).
    Confirm the test message arrives in the inbox. Keep backup freshness checks
    disabled until the managed backup succeeds and leave `tls_host` unset until
    HTTPS works. Credentials and recipient addresses stay private.
@@ -109,10 +109,10 @@ restore procedure.
 
 9. **Approve and verify deployment.** Dispatch **Production deployment** on `main`
    for the verified release tag and approve the protected production environment;
-   see [deployment commands](../README.md#deploying-a-verified-release). Observe
+   see [deployment commands](DEPLOYMENT.md#deploying-a-verified-release). Observe
    the actual VM result and public HTTPS, not just the queue job. Set
    `allow_initial_bootstrap=false` after success. For failures use
-   [OPERATIONS.md](OPERATIONS.md); preserve locks, migration history and volumes.
+   [OPERATIONS.md](../operations/OPERATIONS.md); preserve locks, migration history and volumes.
 
 10. **Publish the first supervised catalog.** Install matching crawler units and
     start `gh-random-crawler.service`; web startup does not crawl. Watch resources,
@@ -125,7 +125,7 @@ restore procedure.
     Check schema, counts and discovery. Use a disposable recovery host rather
     than a parallel restore stack on the micro. Enable the 05:15 UTC/10:45 IST
     backup timer and local freshness/disk/TLS monitoring after success.
-    Follow [MONITORING.md](MONITORING.md) for the stable telemetry anchor,
+    Follow [MONITORING.md](../operations/MONITORING.md) for the stable telemetry anchor,
     protected monitoring secrets, existing issue #26 and independent availability
     monitor. Keep `MONITORING_ENABLED=false` until real configuration and
     failure/recovery inbox tests pass, then enable the schedule.
@@ -134,8 +134,8 @@ restore procedure.
     ports, crawl rotation, backup/restore, alerts and reboot recovery. Measure
     resources and latency using [LOW_MEMORY.md](LOW_MEMORY.md#capacity-checks).
     Resolve OOMs, sustained swapping or five-hour crawl timeouts before relying
-    on the host. Record results in [OPERATIONS.md](OPERATIONS.md#acceptance-record)
-    and keep unverified tasks/observation windows in [TODO.md](../TODO.md).
+    on the host. Record results in [OPERATIONS.md](../operations/OPERATIONS.md#acceptance-record)
+    and keep unverified tasks/observation windows in [TODO.md](../project/TODO.md).
 
 Preserve current/previous release files, trusted backups and recovery keys.
 Optional pgAdmin and a custom paid domain are not required for deployment.

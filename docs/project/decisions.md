@@ -3,7 +3,7 @@
 Current architecture and operating policies, reviewed on 2026-10-29. Git history
 and pull requests retain the implementation chronology. Use [TODO.md](TODO.md)
 for remaining work, [ROADMAP.md](ROADMAP.md) for product choices, and the
-[operations record](deployment/OPERATIONS.md#live-acceptance--2026-10-28) for dated
+[operations record](../operations/OPERATIONS.md#live-acceptance--2026-10-28) for dated
 production evidence.
 
 ## One repository and three runtime roles
@@ -15,7 +15,7 @@ foreign keys, migrations and SQL behavior are exercised consistently.
 The web application and crawler start independently. Web serves the last
 published catalog continuously; starting or restarting it never starts a crawl.
 One immutable application image supplies web, one-shot crawler and migration
-roles. Caddy is the public HTTPS proxy. See [README.md](README.md).
+roles. Caddy is the public HTTPS proxy. See [README.md](../../README.md).
 
 ## Local discovery and a small public interface
 
@@ -55,7 +55,7 @@ three-day window. Both retention durations are configurable.
 Keep both generation-first and repository-first membership indexes: the latter
 avoids expensive foreign-key scans during orphan cleanup. Refresh planner
 statistics after initial population/restore when measured plans warrant it;
-the [operations guide](deployment/OPERATIONS.md) gives the maintenance command.
+the [operations guide](../operations/OPERATIONS.md) gives the maintenance command.
 
 ## Bounded crawl coverage and scheduling
 
@@ -72,7 +72,7 @@ Four successful runs complete a rotation; failed runs can extend that period.
 The persistent timer makes one catch-up activation after downtime. Each later
 slot remains independent of a prior failure, without an immediate restart loop.
 The supervisor's five-hour limit and independent systemd fallback bound hung
-runs. See the [operations guide](deployment/OPERATIONS.md) for stop/retry policy.
+runs. See the [operations guide](../operations/OPERATIONS.md) for stop/retry policy.
 
 ## Explicit resume and fenced ownership
 
@@ -103,8 +103,8 @@ is no permanent `dev` branch. Require `Python checks`, `PostgreSQL tests` and
 `Production containers`, with up-to-date branches and no protection bypass.
 Solo-maintainer rules do not require a second reviewer, while agent merges still
 need user authorization. UI changes require manual user verification before
-completion or commit. Contributor instructions live in [AGENTS.md](AGENTS.md)
-and [CONTRIBUTING.md](CONTRIBUTING.md).
+completion or commit. Contributor instructions live in [AGENTS.md](../../AGENTS.md)
+and [DEVELOPMENT.md](../development/DEVELOPMENT.md).
 
 Commit one `uv.lock`; use locked installs in development, CI and production,
 with reviewed/hash-constrained build tools and immutable image/action pins.
@@ -128,7 +128,8 @@ Checksums and labels alone do not authenticate the publisher.
 Current releases target AMD64 for the provisioned E2 micro. Preserve the older
 ARM64-only v0.1.0 artifacts, which also predate the CA trust fix; do not deploy
 that release on this host. Merging `main` never deploys it automatically.
-See [deployment automation](deployment/AUTOMATION.md) for the trust protocol.
+Use [RELEASES.md](../releases/RELEASES.md) for publication/verification and
+[deployment automation](../deployment/AUTOMATION.md) for the trust protocol.
 
 ## Approved outbound deployment and safe rollback
 
@@ -151,7 +152,7 @@ journals. A successful pointer need not describe runtime after a failed attempt.
 
 Rollback is explicit and requires a verified prior release, unchanged schema
 revision and operator compatibility acknowledgement. Never automatically downgrade,
-restore over live data or remove volumes. See [operations](deployment/OPERATIONS.md).
+restore over live data or remove volumes. See [operations](../operations/OPERATIONS.md).
 
 ## Host policy and bootstrap compatibility
 
@@ -160,7 +161,7 @@ release deployment. Preserve published v0.1.1 artifacts when applying the review
 host-side fixes: writable private alert state within the puller sandbox, distinct
 Actions-artifact/release-asset media negotiation, and a fresh private GH/XDG runtime
 for attestation verification. Retain download/redirect bounds, credential stripping,
-TLS and every source/signer constraint. See [AUTOMATION.md](deployment/AUTOMATION.md).
+TLS and every source/signer constraint. See [AUTOMATION.md](../deployment/AUTOMATION.md).
 
 Secrets live in private root-owned files outside Git/release archives. Only the
 crawler receives its read-only App-key mount. Its required root/Docker access is
@@ -179,7 +180,7 @@ old 128 MiB ceiling justified raising only web. The 704 MiB normal ceiling total
 is not reserved RAM or a capacity guarantee. Native CI uses a shared 768 MiB
 no-swap rehearsal; live CPU, catalog growth and host overhead still need observation.
 Do not build images or add parallel recovery stacks on this VM. See
-[LOW_MEMORY.md](deployment/LOW_MEMORY.md).
+[LOW_MEMORY.md](../deployment/LOW_MEMORY.md).
 
 Only Caddy publishes ports. Web/database stay on trusted private Docker networks;
 Uvicorn trusts reachable proxy peers and Caddy sanitizes public forwarded headers.
@@ -189,7 +190,7 @@ resource limits and bounded Docker/journal logs remain explicit policy.
 
 Use restricted, temporary Bastion access with passphrase-protected keys and
 root/password SSH disabled. PostgreSQL and Docker APIs stay private. Optional
-[pgAdmin](deployment/PGADMIN.md) uses a separate loopback-only overlay and SSH
+[pgAdmin](../operations/PGADMIN.md) uses a separate loopback-only overlay and SSH
 forwarding through the VM; normal deployment never starts it.
 
 ## Encrypted recovery copies with conservative retention
@@ -211,7 +212,7 @@ artifacts for inspection. Remote deletion stays off: an age-only lifecycle rule
 must not expire every usable copy during a prolonged outage. Review remote usage
 monthly and protect recovery copies before any separately supervised pruning.
 Recovery objectives are targets until full replacement-host rehearsal measures
-them. Details and trust limits are in [BACKUPS.md](deployment/BACKUPS.md).
+them. Details and trust limits are in [BACKUPS.md](../operations/BACKUPS.md).
 
 ## Durable email alerts and independent monitoring
 
@@ -234,7 +235,7 @@ codes/pending state live in one dedicated issue, without raw logs or catalog dat
 GitHub's fifteen-minute cron is best effort; measured delivery gaps justified a
 free five-minute UptimeRobot HTTP/S availability supplement. It does not replace
 GitHub's strict response/freshness checks or provide a detection SLA. Both retain
-provider/SMTP dependencies. See [MONITORING.md](deployment/MONITORING.md).
+provider/SMTP dependencies. See [MONITORING.md](../operations/MONITORING.md).
 
 ## Remaining choices and evidence
 
@@ -242,6 +243,6 @@ Retaining membership by successful-crawl counts versus elapsed time, expanding
 sort coverage and multi-select filters remain product questions in
 [ROADMAP.md](ROADMAP.md). Keep actionable acceptance, time-dependent observations
 and explicitly parked work in [TODO.md](TODO.md). Completed release and production
-checks belong in the dated [operations record](deployment/OPERATIONS.md), not in
+checks belong in the dated [operations record](../operations/OPERATIONS.md), not in
 an ever-growing task checklist. CI, injected faults and real outages are distinct
 evidence; none substitutes for a full replacement-VM recovery rehearsal.

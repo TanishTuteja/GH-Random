@@ -3,7 +3,7 @@
 Configuration, retention and recovery procedures for encrypted PostgreSQL
 backups. Dated production backup/restore evidence is in the
 [operations record](OPERATIONS.md#live-acceptance--2026-10-28); unfinished work
-and the parked recovery-key copy are tracked in [TODO.md](../TODO.md).
+and the parked recovery-key copy are tracked in [TODO.md](../project/TODO.md).
 
 ## Policy and trust
 

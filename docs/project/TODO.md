@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-29. This file contains unfinished operational work only.
 Product enhancements belong in [ROADMAP.md](ROADMAP.md); completed production
-checks are recorded in the [operations guide](deployment/OPERATIONS.md#live-acceptance--2026-10-28).
+checks are recorded in the [operations guide](../operations/OPERATIONS.md#live-acceptance--2026-10-28).
 
 ## Can do now
 
@@ -36,7 +36,7 @@ the catalog to age.
   recovered private configuration/credentials and DNS recovery. Verify discovery,
   services, scheduling and alerts; measure data loss and total recovery time.
   Confirm free capacity before provisioning another host. Follow
-  [the recovery runbook](deployment/OPERATIONS.md#complete-vm-loss-or-replacement).
+  [the recovery runbook](../operations/OPERATIONS.md#complete-vm-loss-or-replacement).
 
 ## Needs observation time or a real event
 
@@ -63,5 +63,5 @@ the catalog to age.
 ## Optional, only if enabled
 
 - [ ] Before using production pgAdmin, verify its real Bastion forwarding path
-  and external port isolation. Follow [PGADMIN.md](deployment/PGADMIN.md); it is
+  and external port isolation. Follow [PGADMIN.md](../operations/PGADMIN.md); it is
   not part of the normal small-VM stack.
