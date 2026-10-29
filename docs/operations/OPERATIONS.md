@@ -310,6 +310,7 @@ Remaining tasks and observation windows are tracked only in [TODO.md](../project
 | Public discovery | Valid HTTPS, canonical HTTP 308 redirect, working homepage/API, all language/star/pushed filters, exclusion with alternatives, singleton fallback, and empty results. Browser submissions retain the clean URL; the operator manually confirmed ordinary, empty and singleton cases. |
 | Scheduled catalog | Six completed crawls, all four sort orders and cycle wrap. Final snapshot: 203,759 canonical/active repositories, 903,951 total memberships, active generation 6, zero running crawls. Counts include retained history and are not lifetime totals. |
 | Off-site backups | Encrypted upload and full SHA-256 read-back passed. A fresh pre-reboot backup completed October 29 at 08:47:44 UTC after verification at 08:47:39. Daily schedule is 05:15 UTC; remote automatic deletion remains off. |
+| Independent configuration recovery | At 22:03:33 UTC, a separate age-encrypted snapshot of all 13 private configuration files passed offline decryption, member validation and every manifest checksum on the recovery computer, without writing plaintext files. With explicit operator approval, its 30,920-byte ciphertext was uploaded to the private bucket's separate configuration prefix and fully downloaded/checksummed at 22:08:29. Ciphertext and verification receipts are also retained privately outside the VM; the recovery identity stayed offline. This prepares for host replacement and is not a complete-host restore test. |
 | Independent restore | An actual off-site archive restored on the separate Windows host into isolated PostgreSQL 17: schema `20261027_01`, 62,459 repositories/active memberships, one generation, zero running crawls. The exact released image passed page/API discovery, filtering and repeat avoidance. Owned restore resources were removed. |
 | Application crash recovery | The exact released image ran a one-item fake plan in an isolated database on the VM. Actual `os._exit(17)` preserved the active membership; the next normal crawl recovered the abandoned run, retained membership and the expected sort, and published successfully. Concurrent ownership was refused; owned test resources were removed. |
 | Failure-email behavior | A real loopback TLS SMTP 550 rejection retained pending delivery and provider retry succeeded. The operator received eight isolated stale-crawl/stale-backup/disk/TLS failure/recovery emails. Production success markers, host clock, certificate and disk contents were unchanged. |
@@ -343,6 +344,12 @@ before provisioning a replacement; these observations do not reserve capacity.
 The restored archive's ciphertext SHA-256 was
 `6014267aedfe205350027853fa811262ce3618200eddae084d0f07319b4a332b`;
 age authentication and the inner dump checksum also passed.
+
+The October 29 08:47 database archive was downloaded from Object Storage to the
+independent recovery computer at 22:10:25 UTC. Its trusted ciphertext checksum,
+age authentication, PostgreSQL 17 dump header and inner manifest/dump checksum
+passed without writing plaintext files. This refreshes recovery material; it
+does not constitute another database restore or a replacement-host rehearsal.
 
 ### Capacity and limits of this evidence
 
