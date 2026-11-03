@@ -388,3 +388,28 @@ Evidence: [production deployment](https://github.com/TanishTuteja/GH-Random/acti
 [recovery check](https://github.com/TanishTuteja/GH-Random/actions/runs/40843624776),
 [accepted operational record](https://github.com/TanishTuteja/GH-Random/pull/42).
 Full incident journals and private recovery receipts stay outside the repository.
+
+### Monitoring incident — November 4, 2026 (IST)
+
+The production heartbeat publisher exhausted its GitHub deployment's status
+capacity. Its last accepted update was October 31 at 23:20:31 UTC (November 1
+at 04:50:31 IST); the next hourly attempt failed. A bounded reproduction returned
+HTTP 422 with `DeploymentStatus` validation error: the deployment had reached
+the maximum number of statuses. The anchor contained 100 existing records.
+
+The independent checker correctly reported increasingly old published host,
+crawl and backup timestamps. Those warnings did not establish that all three
+local services had stopped: at November 3, 18:51 UTC, the VM had 25 completed
+crawls, two failed crawls and one running crawl. The last successful crawl
+finished at 08:10 UTC and the verified daily backup at 05:17 UTC that day.
+The active catalog held 253,216 repositories. Core containers had zero restarts
+and no OOM kills; the root filesystem was 6% used. Homepage and discovery checks
+returned HTTP 200. These are dated observations, not ongoing guarantees.
+
+Separately, the November 2 and 3 midday crawls failed on GitHub Search HTTP 500.
+They preserved the previous active catalog, cleaned up their owned containers,
+and did not prevent the next normal scheduled run. Existing retries cover
+transport and rate-limit errors; bounded HTTP 5xx retries remain tracked in
+[TODO.md](../project/TODO.md). Brief deployment-puller `GitHubError` failures
+recovered on the next minute's poll; retained logs do not identify the exact
+underlying HTTP or network error.

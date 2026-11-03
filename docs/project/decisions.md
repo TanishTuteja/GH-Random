@@ -228,7 +228,13 @@ freshness, disk/inodes and verified TLS expiry, with durable retries and cooldow
 It cannot report loss of its own VM or network.
 
 GitHub-hosted monitoring validates public HTTPS/body and authenticated compact
-host/crawl/backup timestamps through a non-production deployment anchor. Its
+host/crawl/backup timestamps through a pinned non-production deployment root.
+Because GitHub refused further statuses after 100 hourly updates, rotate
+root-linked monitoring records at 90 statuses. Retain the root and bot identity,
+preserve proven watermarks, and fail closed on an untrusted newest record;
+recovery seed data does not make an unpublished record healthy. This uses the
+existing deployment permission without repeatedly changing pinned settings.
+Its
 SMTP secrets use a separate protected-branch monitoring environment; safe incident
 codes/pending state live in one dedicated issue, without raw logs or catalog data.
 

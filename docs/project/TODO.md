@@ -1,6 +1,6 @@
 # Remaining work
 
-Reviewed 2026-10-30. This file contains unfinished operational work only.
+Reviewed 2026-11-04. This file contains unfinished operational work only.
 Product enhancements belong in [ROADMAP.md](ROADMAP.md); completed production
 checks are recorded in the [operations guide](../operations/OPERATIONS.md#live-acceptance--2026-10-28).
 
@@ -8,6 +8,14 @@ checks are recorded in the [operations guide](../operations/OPERATIONS.md#live-a
 
 Access and free-capacity prerequisites are noted below; these tasks do not need
 the catalog to age.
+
+### Crawl resilience
+
+- [ ] Add bounded retries for transient GitHub Search HTTP 5xx responses. The
+  November 2 and 3 crawls stopped on HTTP 500 despite transport/rate-limit
+  retries; subsequent scheduled runs started normally and kept the last active
+  catalog available. Test recovery and exhaustion, preserve request pacing and
+  failure alerts, and deploy through a verified application release.
 
 ### Replacement-host recovery (private material, OCI and SSH access)
 

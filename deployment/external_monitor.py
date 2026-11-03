@@ -28,6 +28,8 @@ TITLE = "[Operations] External monitor state"
 MARKER = "<!-- gh-random-monitor:v1 -->\n"
 CODES = {"site", "telemetry", "host", "crawl", "backup"}
 SITE_TIMEOUT = 35
+ROTATE_STATUSES = 90
+TELEMETRY_FORMAT = "gh-random-telemetry-v1"
 
 
 def require(condition: bool, message: str) -> None:
@@ -65,13 +67,103 @@ def anchor(api: Any, deployment: int, creator: int) -> dict[str, Any]:
     value = api.get(f"{prefix(api)}/deployments/{deployment}")
     require(
         isinstance(value, dict)
+        and integer(value.get("id"))
         and value.get("id") == deployment
         and value.get("environment") == ENVIRONMENT
+        and value.get("task") == "monitor"
         and value.get("production_environment") is False
         and value.get("creator", {}).get("id") == creator,
         "Monitoring anchor does not belong to the expected telemetry identity",
     )
     return value
+
+
+def active_deployment(
+    api: Any, root: dict[str, Any], creator: int, now: int
+) -> tuple[dict[str, Any], dict[str, int] | None]:
+    """Follow the newest authenticated record; the configured root stays pinned."""
+    records = api.get(
+        f"{prefix(api)}/deployments?environment={ENVIRONMENT}&task=monitor&per_page=1"
+    )
+    require(isinstance(records, list) and len(records) == 1, "Missing telemetry deployment")
+    value = records[0]
+    require(
+        isinstance(value, dict)
+        and integer(value.get("id"))
+        and value.get("creator", {}).get("id") == creator
+        and value.get("environment") == ENVIRONMENT
+        and value.get("task") == "monitor"
+        and value.get("production_environment") is False,
+        "Unexpected telemetry deployment; do not fall back to an older heartbeat",
+    )
+    if value["id"] == root["id"]:
+        return root, None  # Existing installations predate rotation payloads.
+    payload = value.get("payload")
+    require(
+        isinstance(payload, dict)
+        and set(payload) == {"format", "root_deployment_id", "previous_deployment_id", "watermarks"}
+        and payload.get("format") == TELEMETRY_FORMAT
+        and integer(payload.get("root_deployment_id"))
+        and payload.get("root_deployment_id") == root["id"]
+        and integer(payload.get("previous_deployment_id"))
+        and payload["previous_deployment_id"] != value["id"]
+        and isinstance(root.get("sha"), str)
+        and re.fullmatch(r"[0-9a-f]{40}", root["sha"]) is not None
+        and value.get("ref") == root["sha"]
+        and value.get("sha") == root["sha"],
+        "Invalid telemetry rotation identity or recovery payload",
+    )
+    assert isinstance(payload, dict)
+    return value, telemetry(payload["watermarks"], now)
+
+
+def rotate_deployment(
+    api: Any,
+    root: dict[str, Any],
+    previous: dict[str, Any],
+    creator: int,
+    watermarks: dict[str, int],
+    now: int,
+) -> dict[str, Any]:
+    """Seed a bounded successor so a crash before its first status loses no history."""
+    require(
+        isinstance(root.get("sha"), str) and re.fullmatch(r"[0-9a-f]{40}", root["sha"]) is not None,
+        "Telemetry root needs an immutable source commit",
+    )
+    payload = {
+        "format": TELEMETRY_FORMAT,
+        "root_deployment_id": root["id"],
+        "previous_deployment_id": previous["id"],
+        "watermarks": telemetry(watermarks, now),
+    }
+    created = api.post(
+        f"{prefix(api)}/deployments",
+        {
+            "ref": root["sha"],
+            "task": "monitor",
+            "auto_merge": False,
+            "required_contexts": [],
+            "environment": ENVIRONMENT,
+            "description": "Operational success telemetry; not an application deployment",
+            "payload": payload,
+            "transient_environment": False,
+            "production_environment": False,
+        },
+    )
+    require(
+        isinstance(created, dict)
+        and integer(created.get("id"))
+        and created["id"] not in {root["id"], previous["id"]}
+        and created.get("creator", {}).get("id") == creator
+        and created.get("environment") == ENVIRONMENT
+        and created.get("task") == "monitor"
+        and created.get("production_environment") is False
+        and created.get("ref") == root["sha"]
+        and created.get("sha") == root["sha"]
+        and created.get("payload") == payload,
+        "Telemetry rotation was not acknowledged with the expected identity",
+    )
+    return created
 
 
 def latest(api: Any, deployment: int, creator: int, now: int) -> dict[str, int] | None:
@@ -113,8 +205,11 @@ def local_success(directory: Path, filename: str, now: int) -> int:
 def publish(api: Any, config: dict[str, Any], now: int) -> dict[str, int]:
     """Publish only proven success watermarks, never last-run errors or logs."""
     deployment, creator = config["deployment_id"], config["telemetry_creator_id"]
-    anchor(api, deployment, creator)
-    previous = latest(api, deployment, creator, now) or {"v": 1, "h": 0, "c": 0, "b": 0}
+    root = anchor(api, deployment, creator)
+    record, seed = active_deployment(api, root, creator, now)
+    previous = latest(api, record["id"], creator, now) or seed or {"v": 1, "h": 0, "c": 0, "b": 0}
+    if seed is not None:
+        previous = {key: max(previous[key], seed[key]) for key in previous}
     state, alerts = Path(config["deployment_state_dir"]), Path(config["alerts_state_dir"])
     notifications.private(state, directory=True)
     notifications.private(alerts, directory=True)
@@ -129,10 +224,14 @@ def publish(api: Any, config: dict[str, Any], now: int) -> dict[str, int]:
     # A failed operation, missing local file, rollback, or recovered VM must not
     # erase the last proven success visible to the independent checker.
     current = {key: max(current[key], previous[key]) for key in current}
+    statuses = api.get(f"{prefix(api)}/deployments/{record['id']}/statuses?per_page=100")
+    require(isinstance(statuses, list) and len(statuses) <= 100, "Invalid status count")
+    if len(statuses) >= ROTATE_STATUSES:
+        record = rotate_deployment(api, root, record, creator, current, now)
     body = json.dumps(current, separators=(",", ":"), sort_keys=True)
     require(len(body) <= 140, "Telemetry exceeds GitHub status limit")
     result = api.post(
-        f"{prefix(api)}/deployments/{deployment}/statuses",
+        f"{prefix(api)}/deployments/{record['id']}/statuses",
         {
             "state": "success",
             "description": body,
@@ -290,8 +389,10 @@ def checks(api: Any, config: dict[str, Any], now: int) -> list[str]:
     except Exception:
         failures.append("site")
     try:
-        anchor(api, config["deployment_id"], config["telemetry_creator_id"])
-        value = latest(api, config["deployment_id"], config["telemetry_creator_id"], now)
+        creator = config["telemetry_creator_id"]
+        root = anchor(api, config["deployment_id"], creator)
+        record, _ = active_deployment(api, root, creator, now)
+        value = latest(api, record["id"], creator, now)
         require(value is not None, "No telemetry has been published")
         assert value is not None
         for code, key, seconds in (
