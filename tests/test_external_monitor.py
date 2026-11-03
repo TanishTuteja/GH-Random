@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import ssl
 import sys
 import threading
@@ -42,14 +43,19 @@ class API:
 
     def __init__(self, module):
         self.module = module
-        self.statuses: list = []
         self.calls: list = []
         self.deployment = {
             "id": 10,
             "environment": module.ENVIRONMENT,
+            "task": "monitor",
+            "sha": "a" * 40,
+            "ref": "main",
             "production_environment": False,
             "creator": {"id": 20},
         }
+        self.deployments = {10: self.deployment}
+        self.status_lists: dict[int, list] = {10: []}
+        self.next_id = 100
         self.issue = {
             "number": 30,
             "title": module.TITLE,
@@ -58,17 +64,48 @@ class API:
         }
 
     def get(self, path):
-        if path.endswith("/statuses?per_page=1"):
-            return self.statuses
-        if path.endswith("/deployments/10"):
-            return self.deployment
+        status = re.search(r"/deployments/(\d+)/statuses\?per_page=(1|100)$", path)
+        if status:
+            return self.status_lists[int(status[1])][: int(status[2])]
+        if path.endswith("/deployments?environment=gh-random-monitoring&task=monitor&per_page=1"):
+            return [next(reversed(self.deployments.values()))]
+        deployment = re.search(r"/deployments/(\d+)$", path)
+        if deployment:
+            return self.deployments[int(deployment[1])]
         if path.endswith("/issues/30"):
             return self.issue
         raise AssertionError(path)
 
     def post(self, path, body):
         self.calls.append((path, body))
-        return {"id": 100}
+        self.next_id += 1
+        if path.endswith("/deployments"):
+            value = {"id": self.next_id, "creator": {"id": 20}, "sha": body["ref"], **body}
+            self.deployments[value["id"]] = value
+            self.status_lists[value["id"]] = []
+            return value
+        status = re.search(r"/deployments/(\d+)/statuses$", path)
+        if status:
+            statuses = self.status_lists[int(status[1])]
+            if len(statuses) >= 100:
+                raise RuntimeError("DeploymentStatus maximum number of statuses")
+            value = {
+                "id": self.next_id,
+                "creator": {"id": 20},
+                "created_at": datetime.fromtimestamp(NOW, timezone.utc).isoformat(),
+                **body,
+            }
+            statuses.insert(0, value)
+            return value
+        return {"id": self.next_id}
+
+    @property
+    def statuses(self):
+        return self.status_lists[10]
+
+    @statuses.setter
+    def statuses(self, value):
+        self.status_lists[10] = value
 
     def patch(self, path, body):
         assert path.endswith("/issues/30")
@@ -148,6 +185,154 @@ def test_unproven_or_future_local_success_refused(module, api, config, tmp_path)
         with pytest.raises(ValueError):
             module.publish(api, config, NOW)
     assert not api.calls
+
+
+def publish_state(config, tmp_path, instant=NOW):
+    state, alerts = tmp_path / "deployments", tmp_path / "alerts"
+    state.mkdir(mode=0o700)
+    alerts.mkdir(mode=0o700)
+    config.update(deployment_state_dir=str(state), alerts_state_dir=str(alerts))
+    private_json(
+        alerts / "monitor.json",
+        {"last_completed_at": datetime.fromtimestamp(instant, timezone.utc).isoformat()},
+    )
+    return state, alerts
+
+
+def test_full_legacy_anchor_rotates_without_touching_its_hundred_statuses(
+    module, api, config, tmp_path, monkeypatch
+):
+    publish_state(config, tmp_path)
+    api.heartbeat(c=NOW - 100, b=NOW - 200)
+    api.statuses = api.statuses * 100
+    result = module.publish(api, config, NOW)
+    assert result == {"v": 1, "h": NOW, "c": NOW - 100, "b": NOW - 200}
+    assert len(api.statuses) == 100
+    successor = next(reversed(api.deployments.values()))
+    assert successor["payload"] == {
+        "format": module.TELEMETRY_FORMAT,
+        "root_deployment_id": 10,
+        "previous_deployment_id": 10,
+        "watermarks": result,
+    }
+    assert successor["ref"] == api.deployment["sha"]
+    assert successor["auto_merge"] is False and successor["required_contexts"] == []
+    assert successor["production_environment"] is False
+    assert len(api.status_lists[successor["id"]]) == 1
+    assert config["deployment_id"] == 10
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
+    assert module.checks(api, config, NOW) == []
+
+
+def test_repeated_rotation_stays_below_limit_and_preserves_monotonic_watermarks(
+    module, api, config, tmp_path
+):
+    state, alerts = publish_state(config, tmp_path)
+    api.heartbeat(h=NOW - 1, c=NOW - 2, b=NOW - 3)
+    previous = {"v": 1, "h": NOW - 1, "c": NOW - 2, "b": NOW - 3}
+    for offset in range(3 * module.ROTATE_STATUSES + 5):
+        private_json(
+            alerts / "monitor.json",
+            {"last_completed_at": datetime.fromtimestamp(NOW + offset, timezone.utc).isoformat()},
+        )
+        # Recovered/local-loss state must not erase any previously proven success.
+        for name, divisor in (("crawler-success.json", 2), ("backup-success.json", 3)):
+            path = state / name
+            if offset % 4:
+                private_json(
+                    path,
+                    {
+                        "status": "succeeded",
+                        "cleanup_complete": True,
+                        "finished_at": datetime.fromtimestamp(
+                            NOW + offset // divisor, timezone.utc
+                        ).isoformat(),
+                    },
+                )
+            elif path.exists():
+                path.unlink()
+        current = module.publish(api, config, NOW + offset)
+        assert all(current[key] >= previous[key] for key in ("h", "c", "b"))
+        previous = current
+    assert len(api.deployments) == 4
+    assert max(map(len, api.status_lists.values())) == module.ROTATE_STATUSES
+    assert all(d["payload"]["root_deployment_id"] == 10 for d in list(api.deployments.values())[1:])
+
+
+def empty_successor(module, api, config, tmp_path):
+    publish_state(config, tmp_path)
+    api.heartbeat(h=NOW - 1, c=NOW - 2, b=NOW - 3)
+    seed = {"v": 1, "h": NOW - 1, "c": NOW - 2, "b": NOW - 3}
+    return module.rotate_deployment(api, api.deployment, api.deployment, 20, seed, NOW)
+
+
+def test_crash_between_rotation_and_first_status_is_recoverable_but_never_healthy(
+    module, api, config, tmp_path, monkeypatch
+):
+    successor = empty_successor(module, api, config, tmp_path)
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
+    assert module.checks(api, config, NOW) == ["telemetry"]
+    result = module.publish(api, config, NOW)
+    assert result == {"v": 1, "h": NOW, "c": NOW - 2, "b": NOW - 3}
+    assert len(api.deployments) == 2
+    assert len(api.status_lists[successor["id"]]) == 1
+    assert module.checks(api, config, NOW) == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("creator", {"id": 99}),
+        ("environment", "production"),
+        ("task", "deploy"),
+        ("production_environment", True),
+        ("ref", "main"),
+        ("sha", "b" * 40),
+        ("payload", {}),
+        ("payload.root_deployment_id", 99),
+        ("payload.previous_deployment_id", False),
+        ("payload.watermarks", {"v": 1, "h": NOW + 301, "c": NOW, "b": NOW}),
+    ],
+)
+def test_untrusted_newest_deployment_never_falls_back_to_healthy_root(
+    module, api, config, tmp_path, monkeypatch, field, value
+):
+    successor = empty_successor(module, api, config, tmp_path)
+    target = successor
+    keys = field.split(".")
+    for key in keys[:-1]:
+        target = target[key]
+    target[keys[-1]] = value
+    api.calls.clear()
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
+    assert module.checks(api, config, NOW) == ["telemetry"]
+    with pytest.raises(ValueError):
+        module.publish(api, config, NOW)
+    assert not api.calls
+
+
+def test_newest_bad_rotated_status_never_uses_seed_or_healthy_root(
+    module, api, config, tmp_path, monkeypatch
+):
+    successor = empty_successor(module, api, config, tmp_path)
+    api.status_lists[successor["id"]] = [{**api.statuses[0], "state": "failure"}]
+    api.calls.clear()
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
+    assert module.checks(api, config, NOW) == ["telemetry"]
+    with pytest.raises(ValueError):
+        module.publish(api, config, NOW)
+    assert not api.calls
+
+
+def test_rotation_cannot_replace_validation_of_the_pinned_root(
+    module, api, config, tmp_path, monkeypatch
+):
+    empty_successor(module, api, config, tmp_path)
+    api.deployment["creator"] = {"id": 99}
+    monkeypatch.setattr(module, "probe_site_bounded", lambda origin: None)
+    assert module.checks(api, config, NOW) == ["telemetry"]
+    with pytest.raises(ValueError):
+        module.publish(api, config, NOW)
 
 
 @pytest.mark.parametrize(

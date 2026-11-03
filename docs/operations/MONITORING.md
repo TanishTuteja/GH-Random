@@ -30,9 +30,9 @@ credentials. A stalled lookup or slow body is killed/reaped and recorded as a si
 failure, leaving the parent able to send email. The complete job is limited to
 five minutes.
 
-A separate, non-production GitHub deployment (`gh-random-monitoring`) is a stable
-telemetry anchor. It is **not** a record that an application release was deployed.
-The VM posts a short status description containing only:
+A separate, non-production GitHub deployment (`gh-random-monitoring`) is the
+pinned root of the telemetry series. It is **not** a record that an application
+release was deployed. The VM posts a short status description containing only:
 
 ```json
 {"v":1,"h":1792324800,"c":1792324800,"b":1792324800}
@@ -60,8 +60,40 @@ preserves previously published success timestamps if a later run fails or local
 files disappear, and never treats a new publication time as a successful crawl.
 Future timestamps beyond five minutes, malformed descriptions, a changed author,
 or the wrong deployment environment fail closed. The checker examines the newest
-status and never hides a malformed latest status by falling back to older data.
-Only the explicitly configured numeric bot identity may author the anchor/status.
+validated series record and its newest status; it never hides an empty or malformed
+latest record/status by falling back to older data. Only the explicitly configured
+numeric bot identity may author the root, subsequent records and statuses.
+
+## Telemetry record rotation
+
+GitHub limits the number of statuses attached to one deployment. The original
+hourly publisher exhausted its root after 100 updates and could no longer report
+fresh successes. The updated publisher rotates at **90 statuses**, before that
+limit, while keeping the configured root ID and bot identity unchanged.
+
+The publisher and checker discover the newest non-production `monitor` task in
+the `gh-random-monitoring` environment. Each subsequent record must carry a
+validated payload binding it to the pinned root and recording its predecessor
+ID. Unrelated
+application deployments are not candidates. An unexpected author, environment,
+task or root link fails closed rather than selecting an older healthy record.
+
+Rotation carries forward the last proven success timestamps and takes their
+maximum with the verified local watermarks. Creating a record or publishing a
+status never advances a crawl or backup timestamp on its own. A new record also
+contains the validated seed watermarks, allowing the publisher to recover if it
+stops between record creation and its first status. The external checker still
+reports missing telemetry until that first valid status exists.
+
+Install the updated publisher and external checker together. The original
+v0.1.1 monitoring helper does not rotate; upgrading only the publisher leaves an
+older checker reading the frozen root. A reviewed monitoring-helper update does
+not require recreating the application containers or changing the application
+image. Keep the signed application release files immutable.
+
+Routine rotation uses the existing Deployments permission, preserves old records
+and never changes the pinned root in private configuration or repository
+variables. It does not delete history or mark application deployments inactive.
 
 The independent checker runs at minutes `07,22,37,52` each UTC hour, away from the
 top-of-hour scheduling peak. This is not a guaranteed 15-minute SLA: GitHub can
@@ -104,7 +136,7 @@ beside each other in `/usr/local/lib/gh-random/`. The shared App client signs JW
 using host OpenSSL, exchanges a short-lived installation token, refuses API
 redirects, and never logs credentials.
 
-Create the anchor once with the private VM configuration:
+Create the root anchor once with the private VM configuration:
 
 ```sh
 sudo python3 /usr/local/lib/gh-random/external_monitor.py create-anchor \
@@ -113,11 +145,11 @@ sudo python3 /usr/local/lib/gh-random/external_monitor.py create-anchor \
 
 Record the printed `deployment_id` and `telemetry_creator_id` in that private
 configuration and in the repository variables below. They are identifiers, not
-secrets. Reuse the same anchor through upgrades and VM replacement. Creating a new
-anchor is an explicit operator action requiring both configurations to change;
-never auto-create anchors during a normal heartbeat. Old application deployments
-are not selected heuristically. The anchor deliberately uses `auto_inactive=false`
-when recording statuses, so it cannot retire actual application deployments.
+secrets. Reuse this pinned root through upgrades, automatic record rotation and
+VM replacement. Replacing the root itself is an explicit operator action requiring
+both configurations to change; do not point either configuration at the newest
+rotated record. Subsequent records retain the original root link. Status posts use
+`auto_inactive=false`, so they cannot retire actual application deployments.
 
 After verifying local monitor/crawl/backup successes, install the matching units:
 
@@ -161,7 +193,7 @@ confirmed. Never use an injected failure as evidence of an actual VM outage.
 | Variable | Value |
 | --- | --- |
 | `MONITORING_ORIGIN` | `https://your-real-hostname` |
-| `MONITORING_DEPLOYMENT_ID` | Stable telemetry anchor's numeric ID |
+| `MONITORING_DEPLOYMENT_ID` | Pinned telemetry root's numeric ID; unchanged by rotation |
 | `MONITORING_CREATOR_ID` | Expected telemetry App bot's numeric user ID |
 | `MONITORING_ISSUE_NUMBER` | Permanent state issue number |
 | `MONITORING_ENABLED` | `true`, only after setup/testing |
@@ -231,9 +263,12 @@ telemetry. Then, in a controlled maintenance window:
 5. Verify Actions failure emails and issue subscriptions separately so broken
    SMTP/configuration can still be noticed. Review schedule history regularly.
 
-CI uses mocked GitHub contracts plus real loopback TLS HTTPS/SMTP. Record live
-inbox delivery and the scope of injected faults separately in the operations
-record; these do not establish complete VM-loss recovery or future renewal.
+CI uses mocked GitHub contracts plus real loopback TLS HTTPS/SMTP. Rotation checks
+cover the status limit, repeated rotation, preservation of success watermarks,
+recovery after record creation without a status, and rejection of invalid newest
+records/statuses. Record live inbox delivery and the scope of injected faults
+separately in the operations record; these do not establish complete VM-loss
+recovery or future renewal.
 
 References: [GitHub deployment status API](https://docs.github.com/en/rest/deployments/statuses),
 [scheduled workflow limits](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule),
